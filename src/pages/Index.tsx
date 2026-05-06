@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Product, LabelTemplate, VFConfig, HistoryEntry } from "@/types/label";
+import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
 import { storage, defaultTemplates } from "@/services/storage";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
 import { printService } from "@/services/printService";
@@ -7,14 +7,15 @@ import { ProductSearch } from "@/components/ProductSearch";
 import { LabelPreview } from "@/components/LabelPreview";
 import { LabelEditor } from "@/components/LabelEditor";
 import { ApiConfig } from "@/components/ApiConfig";
+import { Metrics } from "@/components/Metrics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Printer, Tag, Settings, History, Pencil, Loader2, Trash2 } from "lucide-react";
+import { Printer, Tag, Settings, History, Pencil, Loader2, Trash2, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type View = "scan" | "editor" | "config";
+type View = "scan" | "editor" | "config" | "metrics";
 
 const Index = () => {
   const inputRef = useRef<HTMLInputElement>(null);
