@@ -233,6 +233,15 @@ const Index = () => {
             <ApiConfig config={config} onSave={setConfig} />
           </div>
         )}
+
+        {view === "metrics" && (
+          <div className="flex-1 p-6 overflow-auto no-print">
+            <Metrics
+              events={printEvents}
+              onClear={() => { storage.clearPrintEvents(); setPrintEvents([]); }}
+            />
+          </div>
+        )}
       </main>
 
       {/* Print area (hidden on screen) */}
