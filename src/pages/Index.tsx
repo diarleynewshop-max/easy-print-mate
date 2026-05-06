@@ -25,6 +25,8 @@ const Index = () => {
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copies, setCopies] = useState(1);
+  const lastActionRef = useRef<number>(Date.now());
+  const [printEvents, setPrintEvents] = useState<PrintEvent[]>(() => storage.getPrintEvents());
 
   const [config, setConfig] = useState<VFConfig>(() => storage.getConfig());
   const [history, setHistory] = useState<HistoryEntry[]>(() => storage.getHistory());
