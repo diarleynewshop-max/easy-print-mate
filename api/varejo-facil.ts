@@ -27,9 +27,25 @@ type ErpSaldo = {
   estoque?: number;
 };
 
+type ErpCodigoAuxiliar = {
+  id?: string;
+  produtoId?: number;
+  tipo?: string;
+};
+
+type ErpSecao = {
+  id?: number;
+  descricao?: string;
+};
+
+type ErpGrupo = {
+  id?: number;
+  descricao?: string;
+};
+
 type PrecosNormalizados = {
-  precoVarejo?: number;
-  precoAtacado?: number;
+  precoVarejo: number;
+  precoAtacado: number;
 };
 
 type JsonResult<T> = {
@@ -56,7 +72,14 @@ const HOSTS: Record<EmpresaKey, string> = {
   SOYE: "soye.varejofacil.com",
 };
 
+const ERP_LOJA_BY_EMPRESA: Record<EmpresaKey, number> = {
+  FACIL: 1,
+  NEWSHOP: 2,
+  SOYE: 1,
+};
+
 const tokenCache = new Map<string, string>();
+const tokenSourceCache = new Map<string, string>();
 
 function getSingle(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
@@ -95,40 +118,45 @@ function resolveTokenFromAuth(data: Record<string, unknown>): string {
 }
 
 async function getAccessToken(empresa: EmpresaKey, baseUrl: string): Promise<string> {
-  const configuredToken = getEnv(empresa, "TOKEN");
-  if (configuredToken) return configuredToken;
-
   const username = getEnv(empresa, "USERNAME");
   const password = getEnv(empresa, "PASSWORD");
+  const configuredToken = getEnv(empresa, "TOKEN");
   const cacheKey = `${empresa}:${baseUrl}:${username}`;
   const cachedToken = tokenCache.get(cacheKey);
   if (cachedToken) return cachedToken;
 
-  if (!username || !password) {
-    throw new Error(`Credenciais do ERP nao configuradas para ${empresa}.`);
+  if (username && password) {
+    const response = await fetch(`${baseUrl}/auth`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ username, password }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Nao foi possivel autenticar no ERP (${response.status}).`);
+    }
+
+    const data = (await response.json()) as Record<string, unknown>;
+    const token = resolveTokenFromAuth(data);
+    if (!token) {
+      throw new Error("O ERP nao retornou um access token valido no login.");
+    }
+
+    tokenCache.set(cacheKey, token);
+    tokenSourceCache.set(cacheKey, "auth");
+    return token;
   }
 
-  const response = await fetch(`${baseUrl}/auth`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ username, password }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Nao foi possivel autenticar no ERP (${response.status}).`);
+  if (configuredToken) {
+    tokenCache.set(cacheKey, configuredToken);
+    tokenSourceCache.set(cacheKey, "env-token");
+    return configuredToken;
   }
 
-  const data = (await response.json()) as Record<string, unknown>;
-  const token = resolveTokenFromAuth(data);
-  if (!token) {
-    throw new Error("O ERP nao retornou um access token valido no login.");
-  }
-
-  tokenCache.set(cacheKey, token);
-  return token;
+  throw new Error(`Credenciais do ERP nao configuradas para ${empresa}.`);
 }
 
 async function fetchErpJson<T>(
@@ -206,6 +234,10 @@ function normalizarEans(codigo: string): string[] {
   return [...new Set(candidatos.filter(Boolean))];
 }
 
+function getErpLojaAtiva(empresa: EmpresaKey, lojaId?: number): number {
+  return Number.isFinite(lojaId) ? Number(lojaId) : ERP_LOJA_BY_EMPRESA[empresa] || 1;
+}
+
 function getItems<T>(data: unknown): T[] {
   if (Array.isArray(data)) return data as T[];
   if (data && typeof data === "object" && Array.isArray((data as { items?: unknown[] }).items)) {
@@ -214,16 +246,16 @@ function getItems<T>(data: unknown): T[] {
   return [];
 }
 
-async function buscarProdutoPorCodigo(
+async function buscarCodigoAuxiliarPorEan(
   baseUrl: string,
   token: string,
   codigo: string,
   debug: DebugStep[]
-): Promise<{ produto: ErpProduto; ean: string } | null> {
+): Promise<{ codigoAuxiliar: ErpCodigoAuxiliar; eanEncontrado: string } | null> {
   for (const candidato of normalizarEans(codigo)) {
     const fiql = encodeURIComponent(`id==${candidato}`);
     const path = `/v1/produto/codigos-auxiliares?q=${fiql}&count=5`;
-    const codAux = await fetchErpJson<{ items?: Array<{ id?: string; produtoId?: number; tipo?: string }> }>(
+    const codAux = await fetchErpJson<{ items?: ErpCodigoAuxiliar[] }>(
       baseUrl,
       token,
       path,
@@ -231,59 +263,25 @@ async function buscarProdutoPorCodigo(
       `codigo-auxiliar:${candidato}`
     );
 
-    const items = getItems<{ id?: string; produtoId?: number; tipo?: string }>(codAux.data);
-    const item = items.find((aux) => aux?.produtoId && aux?.tipo === "EAN") || items.find((aux) => aux?.produtoId);
-    if (item?.produtoId) {
-      const produto = await fetchErpJson<ErpProduto>(
-        baseUrl,
-        token,
-        `/v1/produto/produtos/${item.produtoId}`,
-        debug,
-        `produto-por-id:${item.produtoId}`
-      );
-      if (produto.response.ok && produto.data?.id) {
-        debug.push({ step: "produto-encontrado", path, found: true, message: `produtoId=${item.produtoId}` });
-        return { produto: produto.data, ean: item.id || candidato };
-      }
+    const items = getItems<ErpCodigoAuxiliar>(codAux.data);
+    const codigoAuxiliar = items.find((item) => item?.produtoId && item?.tipo === "EAN") || items.find((item) => item?.produtoId);
+
+    if (codigoAuxiliar?.produtoId) {
+      debug.push({ step: "codigo-auxiliar-encontrado", path, found: true, message: `produtoId=${codigoAuxiliar.produtoId}` });
+      return {
+        codigoAuxiliar,
+        eanEncontrado: codigoAuxiliar.id || candidato,
+      };
     }
   }
 
-  if (/^\d+$/.test(codigo)) {
-    const direto = await fetchErpJson<ErpProduto>(
-      baseUrl,
-      token,
-      `/v1/produto/produtos/${encodeURIComponent(codigo)}`,
-      debug,
-      `produto-direto:${codigo}`
-    );
-
-    if (direto.response.ok && direto.data?.id) {
-      debug.push({ step: "produto-encontrado", path: `/v1/produto/produtos/${codigo}`, found: true, message: "fallback direto" });
-      return { produto: direto.data, ean: codigo };
-    }
-  }
-
-  const consulta = await fetchErpJson<ErpProduto>(
-    baseUrl,
-    token,
-    `/v1/produto/produtos/consulta/${encodeURIComponent(codigo)}`,
-    debug,
-    `produto-consulta:${codigo}`
-  );
-
-  if (consulta.response.ok && consulta.data?.id) {
-    debug.push({ step: "produto-encontrado", path: `/v1/produto/produtos/consulta/${codigo}`, found: true, message: "fallback consulta" });
-    return { produto: consulta.data, ean: codigo };
-  }
-
-  debug.push({ step: "produto-nao-encontrado", path: "-", found: false, message: `codigo=${codigo}` });
   return null;
 }
 
-function normalizarPreco(precoVenda?: number, precoOferta?: number): number | undefined {
+function normalizarPreco(precoVenda?: number, precoOferta?: number): number {
   if (typeof precoOferta === "number" && precoOferta > 0) return precoOferta;
   if (typeof precoVenda === "number") return precoVenda;
-  return undefined;
+  return 0;
 }
 
 async function buscarPrecos(
@@ -301,18 +299,15 @@ async function buscarPrecos(
     `precos:${produtoId}`
   );
 
-  if (!result.response.ok) return {};
+  if (!result.response.ok) return { precoVarejo: 0, precoAtacado: 0 };
 
   const precos = getItems<ErpPreco>(result.data);
-  const selecionado = lojaId
-    ? precos.find((preco) => Number(preco.lojaId) === lojaId) || precos[0]
-    : precos[0];
+  const lojaAtiva = Number.isFinite(lojaId) ? lojaId : undefined;
+  const selecionado = lojaAtiva ? precos.find((preco) => Number(preco.lojaId) === lojaAtiva) || precos[0] : precos[0];
 
   return {
     precoVarejo: normalizarPreco(selecionado?.precoVenda1, selecionado?.precoOferta1),
-    precoAtacado:
-      normalizarPreco(selecionado?.precoVenda2, selecionado?.precoOferta2) ??
-      selecionado?.precoAtacado,
+    precoAtacado: normalizarPreco(selecionado?.precoVenda2 ?? selecionado?.precoAtacado, selecionado?.precoOferta2),
   };
 }
 
@@ -342,53 +337,110 @@ async function buscarEstoque(
   return selecionado?.saldo ?? selecionado?.saldoEstoque ?? selecionado?.estoque;
 }
 
-async function buscarSecao(baseUrl: string, token: string, secaoId: number | undefined, debug: DebugStep[]): Promise<string | undefined> {
-  if (!secaoId) return undefined;
-  const result = await fetchErpJson<{ descricao?: string }>(baseUrl, token, `/v1/produto/secoes/${secaoId}`, debug, `secao:${secaoId}`);
-  return result.response.ok ? result.data?.descricao : undefined;
+async function buscarSecao(baseUrl: string, token: string, secaoId: number | undefined, debug: DebugStep[]): Promise<string> {
+  if (!secaoId) return "";
+  const result = await fetchErpJson<ErpSecao>(baseUrl, token, `/v1/produto/secoes/${secaoId}`, debug, `secao:${secaoId}`);
+  return result.response.ok ? result.data?.descricao || "" : "";
 }
 
-async function montarProduto(baseUrl: string, token: string, codigo: string, lojaId: number | undefined, debug: DebugStep[]) {
-  const encontrado = await buscarProdutoPorCodigo(baseUrl, token, codigo, debug);
-  if (!encontrado?.produto?.id) {
+async function buscarGrupo(
+  baseUrl: string,
+  token: string,
+  secaoId: number | undefined,
+  grupoId: number | undefined,
+  debug: DebugStep[]
+): Promise<string> {
+  if (!secaoId || !grupoId) return "";
+  const result = await fetchErpJson<ErpGrupo>(
+    baseUrl,
+    token,
+    `/v1/produto/secoes/${secaoId}/grupos/${grupoId}`,
+    debug,
+    `grupo:${secaoId}:${grupoId}`
+  );
+  return result.response.ok ? result.data?.descricao || "" : "";
+}
+
+async function consultarPrecoProdutoVarejoFacil(
+  baseUrl: string,
+  token: string,
+  empresa: EmpresaKey,
+  codigoBarras: string,
+  lojaId: number | undefined,
+  debug: DebugStep[]
+) {
+  const codigo = codigoBarras.trim();
+  const codigoAuxiliarEncontrado = await buscarCodigoAuxiliarPorEan(baseUrl, token, codigo, debug);
+  let produto: ErpProduto | null = null;
+  let eanResolvido = codigo;
+
+  if (codigoAuxiliarEncontrado?.codigoAuxiliar.produtoId) {
+    const produtoResult = await fetchErpJson<ErpProduto>(
+      baseUrl,
+      token,
+      `/v1/produto/produtos/${codigoAuxiliarEncontrado.codigoAuxiliar.produtoId}`,
+      debug,
+      `produto-por-id:${codigoAuxiliarEncontrado.codigoAuxiliar.produtoId}`
+    );
+    produto = produtoResult.response.ok ? produtoResult.data : null;
+    eanResolvido = codigoAuxiliarEncontrado.eanEncontrado;
+  }
+
+  if (!produto) {
+    const produtoResult = await fetchErpJson<ErpProduto>(
+      baseUrl,
+      token,
+      `/v1/produto/produtos/consulta/${encodeURIComponent(codigo)}`,
+      debug,
+      `produto-consulta:${codigo}`
+    );
+    produto = produtoResult.response.ok ? produtoResult.data : null;
+  }
+
+  if (!produto?.id) {
     if (debug.some((step) => step.status === 401)) {
       const error = new Error("ERP recusou o Authorization nas consultas. Verifique se o token/usuario da Vercel tem permissao na API.");
       (error as Error & { status?: number }).status = 401;
       throw error;
     }
 
+    debug.push({ step: "produto-nao-encontrado", path: "-", found: false, message: `codigo=${codigo}` });
     const error = new Error(`Produto nao encontrado para o codigo ${codigo}`);
     (error as Error & { status?: number }).status = 404;
     throw error;
   }
 
-  const produtoId = String(encontrado.produto.id);
-  const [precos, estoque, secao] = await Promise.all([
-    buscarPrecos(baseUrl, token, produtoId, lojaId, debug).catch((error): PrecosNormalizados => {
+  debug.push({ step: "produto-encontrado", path: "-", found: true, message: `produtoId=${produto.id}` });
+
+  const produtoId = String(produto.id);
+  const lojaAtiva = getErpLojaAtiva(empresa, lojaId);
+  const [precos, estoque, secao, grupo] = await Promise.all([
+    buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch((error): PrecosNormalizados => {
       debug.push({ step: "precos-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
-      return {};
+      return { precoVarejo: 0, precoAtacado: 0 };
     }),
-    buscarEstoque(baseUrl, token, produtoId, lojaId, debug).catch((error) => {
+    buscarEstoque(baseUrl, token, produtoId, lojaAtiva, debug).catch((error) => {
       debug.push({ step: "estoque-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
       return undefined;
     }),
-    buscarSecao(baseUrl, token, encontrado.produto.secaoId, debug).catch((error) => {
+    buscarSecao(baseUrl, token, produto.secaoId, debug).catch((error) => {
       debug.push({ step: "secao-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
-      return undefined;
+      return "";
+    }),
+    buscarGrupo(baseUrl, token, produto.secaoId, produto.grupoId, debug).catch((error) => {
+      debug.push({ step: "grupo-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
+      return "";
     }),
   ]);
 
   return {
     id: produtoId,
-    ean: encontrado.ean,
-    descricao:
-      encontrado.produto.descricao ||
-      encontrado.produto.descricaoReduzida ||
-      encontrado.produto.codigoInterno ||
-      "(sem descricao)",
-    codigoInterno: encontrado.produto.codigoInterno,
-    secao: encontrado.produto.secao?.descricao || secao,
-    grupo: encontrado.produto.grupo?.descricao,
+    ean: eanResolvido,
+    codigo_barras: eanResolvido,
+    descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
+    codigoInterno: produto.codigoInterno,
+    secao: produto.secao?.descricao || secao || undefined,
+    grupo: produto.grupo?.descricao || grupo || undefined,
     precoVarejo: precos.precoVarejo,
     precoAtacado: precos.precoAtacado,
     estoque,
@@ -419,8 +471,15 @@ export default async function handler(req: any, res: any) {
 
   try {
     const token = await getAccessToken(empresa, baseUrl);
-    debug.push({ step: "auth", path: `${baseUrl}/auth`, found: true, message: "token disponivel" });
-    const product = await montarProduto(baseUrl, token, codigo, Number.isFinite(lojaId) ? lojaId : undefined, debug);
+    const username = getEnv(empresa, "USERNAME");
+    const cacheKey = `${empresa}:${baseUrl}:${username}`;
+    debug.push({
+      step: "auth",
+      path: `${baseUrl}/auth`,
+      found: true,
+      message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}`,
+    });
+    const product = await consultarPrecoProdutoVarejoFacil(baseUrl, token, empresa, codigo, Number.isFinite(lojaId) ? lojaId : undefined, debug);
     console.info("[varejo-facil] produto resolvido", { empresa, codigo, produtoId: product.id, steps: debug });
     return res.status(200).json({ product, empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null, debug });
   } catch (error) {

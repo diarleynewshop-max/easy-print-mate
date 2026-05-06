@@ -1,6 +1,7 @@
 export interface Product {
   id?: number | string;
   ean: string;
+  codigo_barras?: string;
   descricao: string;
   precoVarejo?: number;
   precoAtacado?: number;

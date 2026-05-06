@@ -20,6 +20,11 @@ function formatBRL(v?: number) {
   return v.toFixed(2).replace(".", ",");
 }
 
+function limitDescricao(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 20 ? `${trimmed.slice(0, 20)}` : trimmed;
+}
+
 function getValue(key: string, p: Product | null): string {
   if (!p) {
     const samples: Record<string, string> = {
@@ -36,13 +41,13 @@ function getValue(key: string, p: Product | null): string {
 
   switch (key) {
     case "descricao":
-      return p.descricao;
+      return limitDescricao(p.descricao);
     case "precoVarejo":
       return formatBRL(p.precoVarejo);
     case "precoAtacado":
       return formatBRL(p.precoAtacado);
     case "ean":
-      return p.ean;
+      return p.codigo_barras || p.ean;
     case "secao":
       return p.secao || p.grupo || "";
     case "estoque":
@@ -110,7 +115,7 @@ function SingleLabel({
   const measure = (mm: number) => (forPrint ? `${mm}mm` : `${mm * MM_TO_PX}px`);
   const barcodeField = template.fields.find((f) => f.key === "barcode");
   const barcodeRef = useBarcode(
-    product?.ean || "7891234567890",
+    product?.codigo_barras || product?.ean || "7891234567890",
     Boolean(barcodeField?.visible),
     barcodeField ? getFieldWidth(template, barcodeField) : 36,
     barcodeField ? getFieldHeight(barcodeField) : 8
