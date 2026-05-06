@@ -12,47 +12,45 @@ interface Props {
 }
 
 export function ApiConfig({ config, onSave }: Props) {
-  const [c, setC] = useState<VFConfig>(config);
+  const [c, setC] = useState<VFConfig>({
+    ...config,
+    empresa: config.empresa || "NEWSHOP",
+  });
 
   const save = () => {
     storage.saveConfig(c);
     onSave(c);
-    toast.success("Configuração salva");
+    toast.success("Configuracao salva");
   };
 
   return (
     <div className="max-w-xl space-y-4">
-      <div>
-        <Label>URL base do ERP</Label>
-        <Input
-          placeholder="https://suaempresa.varejofacil.com"
-          value={c.baseUrl}
-          onChange={(e) => setC({ ...c, baseUrl: e.target.value })}
-        />
-      </div>
-      <div>
-        <Label>Token (Bearer)</Label>
-        <Input
-          type="password"
-          placeholder="Token de acesso"
-          value={c.token}
-          onChange={(e) => setC({ ...c, token: e.target.value })}
-        />
-      </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>Empresa</Label>
-          <Input value={c.empresa} onChange={(e) => setC({ ...c, empresa: e.target.value })} />
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={c.empresa || "NEWSHOP"}
+            onChange={(e) => setC({ ...c, empresa: e.target.value })}
+          >
+            <option value="NEWSHOP">NEWSHOP</option>
+            <option value="SOYE">SOYE</option>
+            <option value="FACIL">FACIL</option>
+          </select>
         </div>
         <div>
-          <Label>Loja</Label>
-          <Input value={c.loja} onChange={(e) => setC({ ...c, loja: e.target.value })} />
+          <Label>Loja ID</Label>
+          <Input placeholder="Ex.: 2" value={c.loja} onChange={(e) => setC({ ...c, loja: e.target.value })} />
         </div>
       </div>
-      <Button onClick={save}>Salvar configuração</Button>
-      <p className="text-xs text-muted-foreground">
-        Configurações ficam salvas localmente neste navegador. O app apenas consulta dados — nunca altera o cadastro no ERP.
-      </p>
+
+      <Button onClick={save}>Salvar configuracao</Button>
+
+      <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground space-y-2">
+        <p>Token, usuario, senha e URL do ERP ficam nas variaveis de ambiente da Vercel.</p>
+        <p>O navegador envia apenas empresa, loja e codigo de barras para o proxy interno `/api/varejo-facil`.</p>
+        <p>Consulta apenas leitura: descricao, valor de venda, codigo de barras, estoque e dados opcionais.</p>
+      </div>
     </div>
   );
 }

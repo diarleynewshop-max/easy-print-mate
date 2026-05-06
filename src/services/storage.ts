@@ -31,7 +31,7 @@ export const storage = {
       const raw = localStorage.getItem(K.config);
       if (raw) return JSON.parse(raw);
     } catch {}
-    return { baseUrl: "", token: "", empresa: "", loja: "" };
+    return { baseUrl: "", token: "", empresa: "NEWSHOP", loja: "" };
   },
   saveConfig(cfg: VFConfig) {
     localStorage.setItem(K.config, JSON.stringify(cfg));
