@@ -45,6 +45,7 @@ type DebugStep = {
   ok?: boolean;
   items?: number;
   found?: boolean;
+  authMode?: string;
   message?: string;
   preview?: string;
 };
@@ -137,37 +138,64 @@ async function fetchErpJson<T>(
   debug?: DebugStep[],
   step = "fetch"
 ): Promise<JsonResult<T>> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: {
-      Authorization: token,
-      Accept: "application/json",
-    },
-  });
+  const authCandidates = getAuthorizationCandidates(token);
+  let lastResult: JsonResult<T> | null = null;
 
-  if (response.status === 401) tokenCache.clear();
+  for (const candidate of authCandidates) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      headers: {
+        Authorization: candidate.value,
+        Accept: "application/json",
+      },
+    });
 
-  const text = await response.text();
-  const contentType = response.headers.get("content-type") || "";
-  let data: T | null = null;
+    if (response.status === 401) tokenCache.clear();
 
-  if (contentType.includes("application/json") && text) {
-    try {
-      data = JSON.parse(text) as T;
-    } catch {
-      data = null;
+    const text = await response.text();
+    const contentType = response.headers.get("content-type") || "";
+    let data: T | null = null;
+
+    if (contentType.includes("application/json") && text) {
+      try {
+        data = JSON.parse(text) as T;
+      } catch {
+        data = null;
+      }
     }
+
+    lastResult = { response, data, text };
+
+    debug?.push({
+      step,
+      path,
+      status: response.status,
+      ok: response.ok,
+      items: getItems(data).length,
+      authMode: candidate.mode,
+      preview: text.replace(/\s+/g, " ").slice(0, 240),
+    });
+
+    if (response.status !== 401) return lastResult;
   }
 
-  debug?.push({
-    step,
-    path,
-    status: response.status,
-    ok: response.ok,
-    items: getItems(data).length,
-    preview: text.replace(/\s+/g, " ").slice(0, 240),
-  });
+  return lastResult!;
+}
 
-  return { response, data, text };
+function getAuthorizationCandidates(token: string): Array<{ mode: string; value: string }> {
+  const trimmed = token.trim();
+  const raw = trimmed.replace(/^Bearer\s+/i, "");
+
+  if (/^Bearer\s+/i.test(trimmed)) {
+    return [
+      { mode: "bearer-original", value: trimmed },
+      { mode: "raw-from-bearer", value: raw },
+    ];
+  }
+
+  return [
+    { mode: "raw", value: trimmed },
+    { mode: "bearer-added", value: `Bearer ${trimmed}` },
+  ];
 }
 
 function normalizarEans(codigo: string): string[] {
@@ -323,6 +351,12 @@ async function buscarSecao(baseUrl: string, token: string, secaoId: number | und
 async function montarProduto(baseUrl: string, token: string, codigo: string, lojaId: number | undefined, debug: DebugStep[]) {
   const encontrado = await buscarProdutoPorCodigo(baseUrl, token, codigo, debug);
   if (!encontrado?.produto?.id) {
+    if (debug.some((step) => step.status === 401)) {
+      const error = new Error("ERP recusou o Authorization nas consultas. Verifique se o token/usuario da Vercel tem permissao na API.");
+      (error as Error & { status?: number }).status = 401;
+      throw error;
+    }
+
     const error = new Error(`Produto nao encontrado para o codigo ${codigo}`);
     (error as Error & { status?: number }).status = 404;
     throw error;
