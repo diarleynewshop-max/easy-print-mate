@@ -48,6 +48,31 @@ const FIELD_ICONS: Record<LabelFieldKey, React.ElementType> = {
   codigoInterno: Hash,
 };
 
+const FONT_OPTIONS = [
+  "Arial, sans-serif",
+  "Arial Black, sans-serif",
+  "Barlow Condensed, Arial, sans-serif",
+  "Calibri, Arial, sans-serif",
+  "Courier New, monospace",
+  "Georgia, serif",
+  "Impact, Arial Black, sans-serif",
+  "Inter, Arial, sans-serif",
+  "Montserrat, Arial, sans-serif",
+  "Roboto Condensed, Arial, sans-serif",
+  "Tahoma, Arial, sans-serif",
+  "Times New Roman, serif",
+  "Verdana, Arial, sans-serif",
+];
+
+const BARCODE_FORMATS = [
+  { value: "auto", label: "Auto" },
+  { value: "EAN13", label: "EAN-13" },
+  { value: "EAN8", label: "EAN-8" },
+  { value: "CODE128", label: "Code 128" },
+  { value: "UPC", label: "UPC" },
+  { value: "ITF14", label: "ITF-14" },
+] as const;
+
 interface Props {
   templates: LabelTemplate[];
   activeId: string;
@@ -59,11 +84,28 @@ function normalizeTemplate(template: LabelTemplate): LabelTemplate {
     ...template,
     columns: Math.max(1, template.columns || 1),
     columnGapMm: template.columnGapMm ?? 2,
-    fields: template.fields.map((field) => ({
-      ...field,
-      widthMm: field.widthMm ?? Math.max(8, template.widthMm - field.x - template.marginMm),
-      heightMm: field.heightMm ?? (field.key === "barcode" ? 9 : Math.max(5, field.fontSize * 0.42)),
-    })),
+    fields: template.fields.map((field) => {
+      const normalized: LabelField = {
+        ...field,
+        widthMm: field.widthMm ?? Math.max(8, template.widthMm - field.x - template.marginMm),
+        heightMm: field.heightMm ?? (field.key === "barcode" ? 9 : Math.max(5, field.fontSize * 0.42)),
+        fontFamily: field.fontFamily ?? template.fontFamily,
+        align: field.align ?? (field.key === "barcode" ? "center" : "left"),
+        color: field.color ?? "#000000",
+      };
+
+      if (field.key !== "barcode") return normalized;
+
+      return {
+        ...normalized,
+        barcodeFormat: field.barcodeFormat ?? "auto",
+        barcodeDisplayValue: field.barcodeDisplayValue ?? true,
+        barcodeTextPosition: field.barcodeTextPosition ?? "bottom",
+        barcodeLineColor: field.barcodeLineColor ?? field.color ?? "#000000",
+        barcodeBarWidth: field.barcodeBarWidth ?? 1,
+        barcodeTextMargin: field.barcodeTextMargin ?? 1,
+      };
+    }),
   };
 }
 
@@ -115,6 +157,49 @@ function NumberControl({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        className="h-8 px-2 text-xs"
+      />
+    </div>
+  );
+}
+
+function SelectControl({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <Label className="text-[10px] font-medium text-muted-foreground">{label}</Label>
+      <select
+        className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function FontControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="space-y-0.5">
+      <Label className="text-[10px] font-medium text-muted-foreground">{label}</Label>
+      <Input
+        list="label-font-options"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         className="h-8 px-2 text-xs"
       />
     </div>
@@ -193,6 +278,12 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
 
   return (
     <div className="h-full min-h-0 overflow-hidden rounded-lg border bg-background shadow-sm">
+      <datalist id="label-font-options">
+        {FONT_OPTIONS.map((font) => (
+          <option key={font} value={font} />
+        ))}
+      </datalist>
+
       <div className="flex h-11 items-center justify-between border-b bg-card px-3">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -348,10 +439,7 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
             </div>
 
             <div className="grid grid-cols-[1fr_auto] items-end gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Fonte</Label>
-                <Input className="h-8 text-xs" value={current.fontFamily} onChange={(e) => update({ fontFamily: e.target.value })} />
-              </div>
+              <FontControl label="Fonte geral" value={current.fontFamily} onChange={(value) => update({ fontFamily: value })} />
               <div className="rounded-md border bg-muted/40 px-2 py-1.5 text-[10px] leading-tight text-muted-foreground">
                 Arraste e redimensione no canvas.
               </div>
@@ -380,8 +468,24 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                   <NumberControl label="Altura" value={selected.heightMm ?? 5} step={0.5} min={1} onChange={(value) => updateField(selected.key, { heightMm: value })} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <NumberControl label="Fonte" value={selected.fontSize} min={1} onChange={(value) => updateField(selected.key, { fontSize: value })} />
+                <FontControl
+                  label={selected.key === "ean" ? "Fonte do EAN" : selected.key === "barcode" ? "Fonte dos numeros" : "Fonte do campo"}
+                  value={selected.fontFamily || current.fontFamily}
+                  onChange={(value) => updateField(selected.key, { fontFamily: value })}
+                />
+
+                <div className="grid grid-cols-3 gap-2">
+                  <NumberControl label="Tamanho" value={selected.fontSize} min={1} onChange={(value) => updateField(selected.key, { fontSize: value })} />
+                  <SelectControl
+                    label="Alinhar"
+                    value={selected.align || "left"}
+                    options={[
+                      { value: "left", label: "Esq." },
+                      { value: "center", label: "Centro" },
+                      { value: "right", label: "Dir." },
+                    ]}
+                    onChange={(value) => updateField(selected.key, { align: value as LabelField["align"] })}
+                  />
                   <div className="space-y-1">
                     <Label className="text-[10px] font-medium text-muted-foreground">Estilo</Label>
                     <Button
@@ -394,6 +498,80 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                     </Button>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-[1fr_72px] gap-2">
+                  <div className="space-y-0.5">
+                    <Label className="text-[10px] font-medium text-muted-foreground">Cor do texto</Label>
+                    <Input
+                      value={selected.color || "#000000"}
+                      onChange={(e) => updateField(selected.key, { color: e.target.value })}
+                      className="h-8 px-2 text-xs"
+                    />
+                  </div>
+                  <input
+                    type="color"
+                    value={selected.color || "#000000"}
+                    onChange={(e) => updateField(selected.key, { color: e.target.value })}
+                    className="mt-[18px] h-8 w-full rounded-md border bg-background p-1"
+                    aria-label="Cor do texto"
+                  />
+                </div>
+
+                {selected.key === "barcode" && (
+                  <div className="space-y-3 rounded-md border bg-background p-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <SelectControl
+                        label="Tipo codigo"
+                        value={selected.barcodeFormat || "auto"}
+                        options={[...BARCODE_FORMATS]}
+                        onChange={(value) => updateField(selected.key, { barcodeFormat: value as LabelField["barcodeFormat"] })}
+                      />
+                      <SelectControl
+                        label="Numeros"
+                        value={selected.barcodeDisplayValue === false ? "false" : "true"}
+                        options={[
+                          { value: "true", label: "Mostrar" },
+                          { value: "false", label: "Ocultar" },
+                        ]}
+                        onChange={(value) => updateField(selected.key, { barcodeDisplayValue: value === "true" })}
+                      />
+                      <SelectControl
+                        label="Posicao"
+                        value={selected.barcodeTextPosition || "bottom"}
+                        options={[
+                          { value: "bottom", label: "Baixo" },
+                          { value: "top", label: "Cima" },
+                        ]}
+                        onChange={(value) => updateField(selected.key, { barcodeTextPosition: value as LabelField["barcodeTextPosition"] })}
+                      />
+                      <NumberControl
+                        label="Larg. barra"
+                        value={selected.barcodeBarWidth ?? 1}
+                        min={0.4}
+                        step={0.1}
+                        onChange={(value) => updateField(selected.key, { barcodeBarWidth: value })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-[1fr_72px] gap-2">
+                      <div className="space-y-0.5">
+                        <Label className="text-[10px] font-medium text-muted-foreground">Cor da barra</Label>
+                        <Input
+                          value={selected.barcodeLineColor || selected.color || "#000000"}
+                          onChange={(e) => updateField(selected.key, { barcodeLineColor: e.target.value })}
+                          className="h-8 px-2 text-xs"
+                        />
+                      </div>
+                      <input
+                        type="color"
+                        value={selected.barcodeLineColor || selected.color || "#000000"}
+                        onChange={(e) => updateField(selected.key, { barcodeLineColor: e.target.value })}
+                        className="mt-[18px] h-8 w-full rounded-md border bg-background p-1"
+                        aria-label="Cor da barra"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <Label className="text-xs">Prefixo</Label>

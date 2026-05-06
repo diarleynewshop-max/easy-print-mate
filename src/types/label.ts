@@ -29,8 +29,17 @@ export interface LabelField {
   widthMm?: number;
   heightMm?: number;
   fontSize: number; // pt
+  fontFamily?: string;
   bold?: boolean;
   label?: string; // optional prefix like "R$"
+  align?: "left" | "center" | "right";
+  color?: string;
+  barcodeFormat?: "auto" | "CODE128" | "EAN13" | "EAN8" | "UPC" | "ITF14";
+  barcodeDisplayValue?: boolean;
+  barcodeTextPosition?: "bottom" | "top";
+  barcodeLineColor?: string;
+  barcodeBarWidth?: number;
+  barcodeTextMargin?: number;
 }
 
 export interface LabelTemplate {

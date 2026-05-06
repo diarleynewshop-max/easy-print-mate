@@ -71,33 +71,45 @@ function getFieldHeight(field: LabelField) {
   return field.heightMm ?? (field.key === "barcode" ? 10 : Math.max(5, field.fontSize * 0.42));
 }
 
-function useBarcode(ean: string, visible: boolean, widthMm: number, heightMm: number) {
+function getBarcodeFormat(ean: string, field?: LabelField) {
+  if (field?.barcodeFormat && field.barcodeFormat !== "auto") return field.barcodeFormat;
+  return ean.length === 13 ? "EAN13" : "CODE128";
+}
+
+function useBarcode(ean: string, visible: boolean, widthMm: number, heightMm: number, field?: LabelField, template?: LabelTemplate) {
   const barcodeRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     if (!barcodeRef.current || !visible) return;
+    const fontFamily = field?.fontFamily || template?.fontFamily || "Arial, sans-serif";
+    const options = {
+      displayValue: field?.barcodeDisplayValue ?? true,
+      font: fontFamily,
+      fontOptions: field?.bold ? "bold" : "",
+      fontSize: Math.max(4, field?.fontSize ?? 9),
+      textAlign: field?.align || "center",
+      textPosition: field?.barcodeTextPosition || "bottom",
+      textMargin: field?.barcodeTextMargin ?? 1,
+      lineColor: field?.barcodeLineColor || field?.color || "#000000",
+      height: Math.max(16, heightMm * 2.8),
+      width: Math.max(0.6, field?.barcodeBarWidth ?? widthMm / 32),
+      margin: 0,
+    };
 
     try {
       JsBarcode(barcodeRef.current, ean, {
-        format: ean.length === 13 ? "EAN13" : "CODE128",
-        displayValue: true,
-        fontSize: 9,
-        height: Math.max(16, heightMm * 2.8),
-        width: Math.max(1, widthMm / 32),
-        margin: 0,
+        format: getBarcodeFormat(ean, field),
+        ...options,
       });
     } catch {
       try {
         JsBarcode(barcodeRef.current, ean, {
           format: "CODE128",
-          displayValue: true,
-          fontSize: 9,
-          height: Math.max(16, heightMm * 2.8),
-          margin: 0,
+          ...options,
         });
       } catch {}
     }
-  }, [ean, visible, widthMm, heightMm]);
+  }, [ean, visible, widthMm, heightMm, field, template]);
 
   return barcodeRef;
 }
@@ -118,7 +130,9 @@ function SingleLabel({
     product?.codigo_barras || product?.ean || "7891234567890",
     Boolean(barcodeField?.visible),
     barcodeField ? getFieldWidth(template, barcodeField) : 36,
-    barcodeField ? getFieldHeight(barcodeField) : 8
+    barcodeField ? getFieldHeight(barcodeField) : 8,
+    barcodeField,
+    template
   );
 
   const startPointerEdit = (event: React.PointerEvent, field: LabelField, mode: "move" | "resize") => {
@@ -210,7 +224,10 @@ function SingleLabel({
                 <div
                   style={{
                     fontSize: `${f.fontSize}pt`,
+                    fontFamily: f.fontFamily || template.fontFamily,
                     fontWeight: f.bold ? 700 : 400,
+                    color: f.color || "#000000",
+                    textAlign: f.align || "left",
                     lineHeight: 1.05,
                     whiteSpace: "nowrap",
                     overflow: "hidden",
