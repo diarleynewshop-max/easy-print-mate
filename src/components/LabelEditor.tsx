@@ -7,17 +7,46 @@ import { Button } from "@/components/ui/button";
 import { LabelPreview } from "./LabelPreview";
 import { storage, defaultTemplates } from "@/services/storage";
 import { toast } from "sonner";
-import { Download, Upload, Save, Trash2, Plus } from "lucide-react";
+import {
+  Barcode,
+  Columns3,
+  DollarSign,
+  Download,
+  Eye,
+  EyeOff,
+  Hash,
+  Layers3,
+  MousePointer2,
+  Plus,
+  Ruler,
+  Save,
+  Tags,
+  Trash2,
+  Type,
+  Upload,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const FIELD_LABELS: Record<LabelFieldKey, string> = {
   descricao: "Descricao",
   precoVarejo: "Preco Varejo",
   precoAtacado: "Preco Atacado",
-  ean: "EAN (texto)",
+  ean: "EAN",
   barcode: "Codigo de Barras",
   secao: "Secao",
   estoque: "Estoque",
   codigoInterno: "Codigo Interno",
+};
+
+const FIELD_ICONS: Record<LabelFieldKey, React.ElementType> = {
+  descricao: Type,
+  precoVarejo: DollarSign,
+  precoAtacado: DollarSign,
+  ean: Hash,
+  barcode: Barcode,
+  secao: Tags,
+  estoque: Hash,
+  codigoInterno: Hash,
 };
 
 interface Props {
@@ -56,10 +85,41 @@ function parseBtwTemplate(fileName: string, text: string): LabelTemplate {
     fields: base.fields.map((field) => {
       if (field.key === "descricao") return { ...field, x: 2, y: 2, widthMm: Math.max(10, widthMm - 4) };
       if (field.key === "precoVarejo") return { ...field, x: 2, y: Math.max(8, heightMm * 0.35), widthMm: Math.max(10, widthMm * 0.45) };
-      if (field.key === "barcode") return { ...field, x: 2, y: Math.max(16, heightMm - 10), widthMm: Math.max(20, widthMm - 4), heightMm: Math.min(10, heightMm / 3) };
+      if (field.key === "barcode") return { ...field, x: 2, y: Math.max(6, heightMm - 7), widthMm: Math.max(20, widthMm - 4), heightMm: Math.min(10, heightMm / 3) };
       return field;
     }),
   });
+}
+
+function NumberControl({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+      <Input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-9"
+      />
+    </div>
+  );
 }
 
 export function LabelEditor({ templates, activeId, onChange }: Props) {
@@ -67,6 +127,8 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
   const [currentId, setCurrentId] = useState(activeId);
   const [selectedField, setSelectedField] = useState<LabelFieldKey | null>("barcode");
   const current = local.find((t) => t.id === currentId) || local[0];
+  const selected = current.fields.find((field) => field.key === selectedField) || current.fields.find((field) => field.visible) || current.fields[0];
+  const SelectedIcon = selected ? FIELD_ICONS[selected.key] : MousePointer2;
 
   const update = (patch: Partial<LabelTemplate>) => {
     const next = local.map((t) => (t.id === current.id ? normalizeTemplate({ ...t, ...patch }) : t));
@@ -86,11 +148,7 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
 
   const newTemplate = () => {
     const id = `tpl-${Date.now()}`;
-    const t: LabelTemplate = normalizeTemplate({
-      ...defaultTemplates()[0],
-      id,
-      name: "Novo modelo",
-    });
+    const t = normalizeTemplate({ ...defaultTemplates()[0], id, name: "Novo modelo" });
     setLocal([...local, t]);
     setCurrentId(id);
   };
@@ -120,7 +178,7 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
         const template = parseBtwTemplate(file.name, text.slice(0, 12000));
         setLocal((prev) => [...prev, template]);
         setCurrentId(template.id);
-        toast.success(`Modelo importado do BarTender: ${template.widthMm}x${template.heightMm}mm`);
+        toast.success(`Modelo importado: ${template.widthMm}x${template.heightMm}mm`);
         return;
       }
 
@@ -135,11 +193,21 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-4 h-full">
-      <div className="space-y-4 overflow-auto pr-2">
-        <div className="flex gap-2">
+    <div className="h-full min-h-0 overflow-hidden rounded-lg border bg-background shadow-sm">
+      <div className="flex h-14 items-center justify-between border-b bg-card px-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Tags className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight">Editor de Etiqueta</p>
+            <p className="text-xs text-muted-foreground">{current.widthMm} x {current.heightMm} mm · {current.columns || 1} coluna(s)</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
           <select
-            className="flex-1 h-9 rounded-md border bg-background px-2 text-sm"
+            className="h-9 w-64 rounded-md border bg-background px-2 text-sm"
             value={current.id}
             onChange={(e) => setCurrentId(e.target.value)}
           >
@@ -149,140 +217,207 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
               </option>
             ))}
           </select>
-          <Button size="icon" variant="outline" onClick={newTemplate} title="Novo">
-            <Plus />
+          <Button size="sm" variant="outline" onClick={newTemplate}>
+            <Plus /> Novo
           </Button>
-          <Button size="icon" variant="outline" onClick={remove} title="Remover">
-            <Trash2 />
+          <Button size="sm" variant="outline" onClick={remove}>
+            <Trash2 /> Excluir
           </Button>
-        </div>
-
-        <div className="space-y-2">
-          <Label>Nome</Label>
-          <Input value={current.name} onChange={(e) => update({ name: e.target.value })} />
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <Label>Largura (mm)</Label>
-            <Input type="number" value={current.widthMm} onChange={(e) => update({ widthMm: +e.target.value })} />
-          </div>
-          <div>
-            <Label>Altura (mm)</Label>
-            <Input type="number" value={current.heightMm} onChange={(e) => update({ heightMm: +e.target.value })} />
-          </div>
-          <div>
-            <Label>Margem</Label>
-            <Input type="number" value={current.marginMm} onChange={(e) => update({ marginMm: +e.target.value })} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label>Colunas</Label>
-            <Input
-              type="number"
-              min={1}
-              max={6}
-              value={current.columns || 1}
-              onChange={(e) => update({ columns: Math.max(1, +e.target.value || 1) })}
-            />
-          </div>
-          <div>
-            <Label>Espaco colunas (mm)</Label>
-            <Input
-              type="number"
-              value={current.columnGapMm ?? 2}
-              onChange={(e) => update({ columnGapMm: Math.max(0, +e.target.value || 0) })}
-            />
-          </div>
-        </div>
-
-        <div>
-          <Label>Fonte</Label>
-          <Input value={current.fontFamily} onChange={(e) => update({ fontFamily: e.target.value })} />
-        </div>
-
-        <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-          Arraste qualquer campo no preview. Clique no campo e use o ponto azul para redimensionar.
-        </div>
-
-        <div className="space-y-3 border-t pt-3">
-          <div className="text-sm font-semibold">Campos</div>
-          {current.fields.map((f) => (
-            <div key={f.key} className={`rounded-md border p-2 space-y-2 ${selectedField === f.key ? "border-primary" : ""}`}>
-              <div className="flex items-center justify-between">
-                <button type="button" onClick={() => setSelectedField(f.key)} className="text-sm font-medium text-left">
-                  {FIELD_LABELS[f.key]}
-                </button>
-                <Switch checked={f.visible} onCheckedChange={(v) => updateField(f.key, { visible: v })} />
-              </div>
-              {f.visible && (
-                <div className="grid grid-cols-4 gap-2">
-                  <div>
-                    <Label className="text-xs">X</Label>
-                    <Input type="number" value={f.x} onChange={(e) => updateField(f.key, { x: +e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Y</Label>
-                    <Input type="number" value={f.y} onChange={(e) => updateField(f.key, { y: +e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Larg.</Label>
-                    <Input type="number" value={f.widthMm ?? 10} onChange={(e) => updateField(f.key, { widthMm: +e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Alt.</Label>
-                    <Input type="number" value={f.heightMm ?? 5} onChange={(e) => updateField(f.key, { heightMm: +e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Fonte</Label>
-                    <Input type="number" value={f.fontSize} onChange={(e) => updateField(f.key, { fontSize: +e.target.value })} />
-                  </div>
-                  <div className="flex items-end">
-                    <label className="flex items-center gap-1 text-xs">
-                      <input type="checkbox" checked={!!f.bold} onChange={(e) => updateField(f.key, { bold: e.target.checked })} />
-                      Negrito
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-2 sticky bottom-0 bg-background pt-2 border-t">
-          <Button onClick={save} className="flex-1">
+          <Button size="sm" onClick={save}>
             <Save /> Salvar
           </Button>
-          <Button variant="outline" onClick={exportJson}>
-            <Download /> Exportar
-          </Button>
-          <label>
-            <input
-              type="file"
-              accept=".json,.btw,application/json"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && importTemplateFile(e.target.files[0])}
-            />
-            <Button variant="outline" asChild>
-              <span>
-                <Upload /> Importar JSON/BTW
-              </span>
-            </Button>
-          </label>
         </div>
       </div>
 
-      <div className="bg-muted/40 rounded-md p-6 flex items-center justify-center overflow-auto">
-        <LabelPreview
-          template={current}
-          product={null}
-          editable
-          selectedField={selectedField}
-          onSelectField={setSelectedField}
-          onFieldChange={updateField}
-        />
+      <div className="grid h-[calc(100%-3.5rem)] min-h-0 grid-cols-[280px_1fr_320px]">
+        <aside className="min-h-0 overflow-auto border-r bg-card/70">
+          <div className="border-b p-4 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Layers3 className="h-4 w-4 text-primary" />
+              Campos
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" onClick={exportJson}>
+                <Download /> Exportar
+              </Button>
+              <label>
+                <input
+                  type="file"
+                  accept=".json,.btw,application/json"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && importTemplateFile(e.target.files[0])}
+                />
+                <Button variant="outline" size="sm" asChild className="w-full">
+                  <span>
+                    <Upload /> Importar
+                  </span>
+                </Button>
+              </label>
+            </div>
+          </div>
+
+          <div className="p-2">
+            {current.fields.map((field) => {
+              const Icon = FIELD_ICONS[field.key];
+              const active = selected?.key === field.key;
+              return (
+                <button
+                  key={field.key}
+                  type="button"
+                  onClick={() => setSelectedField(field.key)}
+                  className={cn(
+                    "mb-1 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors",
+                    active ? "border-primary bg-primary/10 text-primary" : "border-transparent hover:border-border hover:bg-muted/60"
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{FIELD_LABELS[field.key]}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {field.x}mm, {field.y}mm · {field.widthMm ?? 0}x{field.heightMm ?? 0}mm
+                    </span>
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      updateField(field.key, { visible: !field.visible });
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        updateField(field.key, { visible: !field.visible });
+                      }
+                    }}
+                    className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+                    aria-label={field.visible ? "Ocultar campo" : "Mostrar campo"}
+                  >
+                    {field.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <main className="min-h-0 overflow-auto bg-[linear-gradient(45deg,#eef2f7_25%,transparent_25%),linear-gradient(-45deg,#eef2f7_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#eef2f7_75%),linear-gradient(-45deg,transparent_75%,#eef2f7_75%)] bg-[length:22px_22px] bg-[position:0_0,0_11px,11px_-11px,-11px_0]">
+          <div className="flex min-h-full items-center justify-center p-10">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground shadow-sm">
+                <span className="flex items-center gap-2">
+                  <MousePointer2 className="h-3.5 w-3.5" />
+                  {selected ? FIELD_LABELS[selected.key] : "Selecione um campo"}
+                </span>
+                <span>{current.name}</span>
+              </div>
+              <LabelPreview
+                template={current}
+                product={null}
+                editable
+                selectedField={selectedField}
+                onSelectField={setSelectedField}
+                onFieldChange={updateField}
+              />
+            </div>
+          </div>
+        </main>
+
+        <aside className="min-h-0 overflow-auto border-l bg-card/80">
+          <div className="border-b p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Ruler className="h-4 w-4 text-primary" />
+              Modelo
+            </div>
+          </div>
+
+          <div className="space-y-5 p-4">
+            <div className="space-y-2">
+              <Label>Nome do modelo</Label>
+              <Input value={current.name} onChange={(e) => update({ name: e.target.value })} />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <NumberControl label="Largura" value={current.widthMm} min={1} onChange={(value) => update({ widthMm: value })} />
+              <NumberControl label="Altura" value={current.heightMm} min={1} onChange={(value) => update({ heightMm: value })} />
+              <NumberControl label="Margem" value={current.marginMm} min={0} onChange={(value) => update({ marginMm: value })} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <NumberControl label="Colunas" value={current.columns || 1} min={1} max={6} onChange={(value) => update({ columns: Math.max(1, value) })} />
+              <NumberControl label="Espaco" value={current.columnGapMm ?? 2} min={0} onChange={(value) => update({ columnGapMm: Math.max(0, value) })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Fonte</Label>
+              <Input value={current.fontFamily} onChange={(e) => update({ fontFamily: e.target.value })} />
+            </div>
+
+            <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+              Arraste no canvas para mover. Use o ponto azul para redimensionar.
+            </div>
+          </div>
+
+          {selected && (
+            <>
+              <div className="border-y p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <SelectedIcon className="h-4 w-4 text-primary" />
+                  {FIELD_LABELS[selected.key]}
+                </div>
+              </div>
+
+              <div className="space-y-5 p-4">
+                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <span className="text-sm font-medium">Visivel</span>
+                  <Switch checked={selected.visible} onCheckedChange={(value) => updateField(selected.key, { visible: value })} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberControl label="X" value={selected.x} step={0.5} onChange={(value) => updateField(selected.key, { x: value })} />
+                  <NumberControl label="Y" value={selected.y} step={0.5} onChange={(value) => updateField(selected.key, { y: value })} />
+                  <NumberControl label="Largura" value={selected.widthMm ?? 10} step={0.5} min={1} onChange={(value) => updateField(selected.key, { widthMm: value })} />
+                  <NumberControl label="Altura" value={selected.heightMm ?? 5} step={0.5} min={1} onChange={(value) => updateField(selected.key, { heightMm: value })} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberControl label="Fonte" value={selected.fontSize} min={1} onChange={(value) => updateField(selected.key, { fontSize: value })} />
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Estilo</Label>
+                    <Button
+                      type="button"
+                      variant={selected.bold ? "default" : "outline"}
+                      className="h-9 w-full"
+                      onClick={() => updateField(selected.key, { bold: !selected.bold })}
+                    >
+                      Negrito
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Prefixo</Label>
+                  <Input
+                    value={selected.label || ""}
+                    placeholder="Ex.: R$"
+                    onChange={(e) => updateField(selected.key, { label: e.target.value })}
+                  />
+                </div>
+
+                <Button type="button" variant="outline" className="w-full" onClick={() => updateField(selected.key, { visible: false })}>
+                  <EyeOff /> Ocultar campo
+                </Button>
+              </div>
+            </>
+          )}
+
+          <div className="border-t p-4 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Columns3 className="h-3.5 w-3.5" />
+              Impressao usa {current.columns || 1} coluna(s)
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );

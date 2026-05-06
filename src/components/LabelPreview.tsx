@@ -172,6 +172,12 @@ function SingleLabel({
         height: measure(template.heightMm),
         fontFamily: template.fontFamily,
         border: forPrint ? "none" : "1px dashed #999",
+        backgroundColor: "#fff",
+        backgroundImage: editable
+          ? "linear-gradient(rgba(37,99,235,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(37,99,235,.08) 1px, transparent 1px)"
+          : undefined,
+        backgroundSize: editable ? `${MM_TO_PX * 2}px ${MM_TO_PX * 2}px` : undefined,
+        boxShadow: editable ? "0 18px 50px rgba(15, 23, 42, .16)" : undefined,
       }}
     >
       {template.fields
