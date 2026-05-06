@@ -1,10 +1,11 @@
-import { LabelTemplate, VFConfig, HistoryEntry } from "@/types/label";
+import { LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
 
 const K = {
   templates: "vf_label_templates",
   activeTemplate: "vf_label_active_template",
   config: "vf_api_config",
   history: "vf_history",
+  prints: "vf_print_events",
 };
 
 export const storage = {
@@ -50,6 +51,22 @@ export const storage = {
   },
   clearHistory() {
     localStorage.removeItem(K.history);
+  },
+  getPrintEvents(): PrintEvent[] {
+    try {
+      const raw = localStorage.getItem(K.prints);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  },
+  pushPrintEvent(e: PrintEvent) {
+    const list = storage.getPrintEvents();
+    list.unshift(e);
+    localStorage.setItem(K.prints, JSON.stringify(list.slice(0, 5000)));
+  },
+  clearPrintEvents() {
+    localStorage.removeItem(K.prints);
   },
 };
 

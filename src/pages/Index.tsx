@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Product, LabelTemplate, VFConfig, HistoryEntry } from "@/types/label";
+import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
 import { storage, defaultTemplates } from "@/services/storage";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
 import { printService } from "@/services/printService";
@@ -7,14 +7,15 @@ import { ProductSearch } from "@/components/ProductSearch";
 import { LabelPreview } from "@/components/LabelPreview";
 import { LabelEditor } from "@/components/LabelEditor";
 import { ApiConfig } from "@/components/ApiConfig";
+import { Metrics } from "@/components/Metrics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Printer, Tag, Settings, History, Pencil, Loader2, Trash2 } from "lucide-react";
+import { Printer, Tag, Settings, History, Pencil, Loader2, Trash2, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type View = "scan" | "editor" | "config";
+type View = "scan" | "editor" | "config" | "metrics";
 
 const Index = () => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -24,6 +25,8 @@ const Index = () => {
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copies, setCopies] = useState(1);
+  const lastActionRef = useRef<number>(Date.now());
+  const [printEvents, setPrintEvents] = useState<PrintEvent[]>(() => storage.getPrintEvents());
 
   const [config, setConfig] = useState<VFConfig>(() => storage.getConfig());
   const [history, setHistory] = useState<HistoryEntry[]>(() => storage.getHistory());
@@ -73,6 +76,18 @@ const Index = () => {
 
   const handlePrint = () => {
     if (!product) return toast.error("Nenhum produto selecionado");
+    const now = Date.now();
+    const evt: PrintEvent = {
+      ean: product.ean,
+      descricao: product.descricao,
+      quantidade: copies,
+      templateId: activeTemplateId,
+      at: now,
+      durationMs: now - lastActionRef.current,
+    };
+    storage.pushPrintEvent(evt);
+    setPrintEvents(storage.getPrintEvents());
+    lastActionRef.current = now;
     printService.printBrowser();
     setTimeout(() => {
       setCode("");
@@ -101,6 +116,7 @@ const Index = () => {
         <nav className="p-2 space-y-1">
           <NavBtn icon={<Tag />} label="Bipar / Imprimir" active={view === "scan"} onClick={() => { setView("scan"); focusInput(); }} />
           <NavBtn icon={<Pencil />} label="Editor de etiqueta" active={view === "editor"} onClick={() => setView("editor")} />
+          <NavBtn icon={<BarChart3 />} label="Métricas" active={view === "metrics"} onClick={() => setView("metrics")} />
           <NavBtn icon={<Settings />} label="Configuração API" active={view === "config"} onClick={() => setView("config")} />
         </nav>
 
@@ -215,6 +231,15 @@ const Index = () => {
           <div className="flex-1 p-6 overflow-auto no-print">
             <h2 className="text-xl font-bold mb-4">Configuração da API Varejo Fácil</h2>
             <ApiConfig config={config} onSave={setConfig} />
+          </div>
+        )}
+
+        {view === "metrics" && (
+          <div className="flex-1 p-6 overflow-auto no-print">
+            <Metrics
+              events={printEvents}
+              onClear={() => { storage.clearPrintEvents(); setPrintEvents([]); }}
+            />
           </div>
         )}
       </main>
