@@ -2,10 +2,12 @@ import { Product, VFConfig } from "@/types/label";
 
 export class VFError extends Error {
   status?: number;
+  debug?: unknown;
 
-  constructor(msg: string, status?: number) {
+  constructor(msg: string, status?: number, debug?: unknown) {
     super(msg);
     this.status = status;
+    this.debug = debug;
   }
 }
 
@@ -43,11 +45,11 @@ export async function fetchProductByEan(cfg: VFConfig, ean: string, signal?: Abo
   }
 
   if (response.status === 401) {
-    throw new VFError("ERP nao autorizado. Verifique token, usuario ou senha na Vercel.", 401);
+    throw new VFError("ERP nao autorizado. Verifique token, usuario ou senha na Vercel.", 401, data.debug);
   }
 
   if (response.status === 404) {
-    throw new VFError(data.error || `Produto nao encontrado para o codigo ${code}`, 404);
+    throw new VFError(data.error || `Produto nao encontrado para o codigo ${code}`, 404, data.debug);
   }
 
   if (!response.ok) {
@@ -56,11 +58,11 @@ export async function fetchProductByEan(cfg: VFConfig, ean: string, signal?: Abo
       error: data.error,
       debug: data.debug,
     });
-    throw new VFError(data.error || `Erro ${response.status} ao consultar ERP`, response.status);
+    throw new VFError(data.error || `Erro ${response.status} ao consultar ERP`, response.status, data.debug);
   }
 
   if (!data.product) {
-    throw new VFError("API nao retornou produto valido");
+    throw new VFError("API nao retornou produto valido", undefined, data.debug);
   }
 
   return data.product;

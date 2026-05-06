@@ -25,6 +25,8 @@ export interface LabelField {
   visible: boolean;
   x: number; // mm
   y: number; // mm
+  widthMm?: number;
+  heightMm?: number;
   fontSize: number; // pt
   bold?: boolean;
   label?: string; // optional prefix like "R$"
@@ -36,6 +38,8 @@ export interface LabelTemplate {
   widthMm: number;
   heightMm: number;
   marginMm: number;
+  columns?: number;
+  columnGapMm?: number;
   fontFamily: string;
   fields: LabelField[];
 }

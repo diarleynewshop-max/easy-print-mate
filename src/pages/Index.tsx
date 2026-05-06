@@ -24,6 +24,7 @@ const Index = () => {
   const [loading, setLoading] = useState(false);
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDebug, setErrorDebug] = useState<unknown>(null);
   const [copies, setCopies] = useState(1);
   const lastActionRef = useRef<number>(Date.now());
   const [printEvents, setPrintEvents] = useState<PrintEvent[]>(() => storage.getPrintEvents());
@@ -57,6 +58,7 @@ const Index = () => {
     if (!ean) return;
     setLoading(true);
     setError(null);
+    setErrorDebug(null);
     setProduct(null);
     try {
       const p = await fetchProductByEan(config, ean);
@@ -66,6 +68,7 @@ const Index = () => {
       setHistory(storage.getHistory());
     } catch (e) {
       const msg = e instanceof VFError ? e.message : "Erro inesperado";
+      setErrorDebug(e instanceof VFError ? e.debug : null);
       setError(msg);
       toast.error(msg);
     } finally {
@@ -174,7 +177,16 @@ const Index = () => {
               />
               <div className="rounded-lg border bg-card p-6 min-h-[280px] flex items-center justify-center">
                 {loading && <Loader2 className="h-10 w-10 animate-spin text-primary" />}
-                {!loading && error && <div className="text-destructive font-medium">{error}</div>}
+                {!loading && error && (
+                  <div className="w-full max-w-3xl space-y-3">
+                    <div className="text-destructive font-medium">{error}</div>
+                    {errorDebug ? (
+                      <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs text-muted-foreground whitespace-pre-wrap">
+                        {JSON.stringify(errorDebug, null, 2)}
+                      </pre>
+                    ) : null}
+                  </div>
+                )}
                 {!loading && !error && (
                   <LabelPreview template={activeTemplate} product={product} />
                 )}
