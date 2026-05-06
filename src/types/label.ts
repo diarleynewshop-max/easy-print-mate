@@ -52,3 +52,12 @@ export interface HistoryEntry {
   descricao: string;
   at: number;
 }
+
+export interface PrintEvent {
+  ean: string;
+  descricao: string;
+  quantidade: number;
+  templateId: string;
+  at: number;
+  durationMs: number; // tempo desde a ação anterior (scan/print)
+}
