@@ -76,6 +76,18 @@ const Index = () => {
 
   const handlePrint = () => {
     if (!product) return toast.error("Nenhum produto selecionado");
+    const now = Date.now();
+    const evt: PrintEvent = {
+      ean: product.ean,
+      descricao: product.descricao,
+      quantidade: copies,
+      templateId: activeTemplateId,
+      at: now,
+      durationMs: now - lastActionRef.current,
+    };
+    storage.pushPrintEvent(evt);
+    setPrintEvents(storage.getPrintEvents());
+    lastActionRef.current = now;
     printService.printBrowser();
     setTimeout(() => {
       setCode("");
