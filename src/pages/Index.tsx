@@ -105,7 +105,7 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen flex bg-background text-foreground">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {/* Sidebar */}
       <aside className="no-print w-64 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
         <div className="p-4 border-b border-sidebar-border flex items-center gap-2">
@@ -230,7 +230,7 @@ const Index = () => {
         )}
 
         {view === "editor" && (
-          <div className="flex-1 p-6 overflow-hidden no-print">
+          <div className="flex-1 p-3 overflow-hidden no-print">
             <LabelEditor
               templates={templates}
               activeId={activeTemplateId}

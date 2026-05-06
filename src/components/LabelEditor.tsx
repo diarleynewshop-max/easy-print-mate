@@ -9,7 +9,6 @@ import { storage, defaultTemplates } from "@/services/storage";
 import { toast } from "sonner";
 import {
   Barcode,
-  Columns3,
   DollarSign,
   Download,
   Eye,
@@ -107,8 +106,8 @@ function NumberControl({
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+    <div className="space-y-0.5">
+      <Label className="text-[10px] font-medium text-muted-foreground">{label}</Label>
       <Input
         type="number"
         min={min}
@@ -116,7 +115,7 @@ function NumberControl({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-9"
+        className="h-8 px-2 text-xs"
       />
     </div>
   );
@@ -194,10 +193,10 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
 
   return (
     <div className="h-full min-h-0 overflow-hidden rounded-lg border bg-background shadow-sm">
-      <div className="flex h-14 items-center justify-between border-b bg-card px-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Tags className="h-5 w-5" />
+      <div className="flex h-11 items-center justify-between border-b bg-card px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Tags className="h-4 w-4" />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold leading-tight">Editor de Etiqueta</p>
@@ -207,7 +206,7 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
 
         <div className="flex items-center gap-2">
           <select
-            className="h-9 w-64 rounded-md border bg-background px-2 text-sm"
+            className="h-8 w-56 rounded-md border bg-background px-2 text-xs"
             value={current.id}
             onChange={(e) => setCurrentId(e.target.value)}
           >
@@ -217,27 +216,27 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
               </option>
             ))}
           </select>
-          <Button size="sm" variant="outline" onClick={newTemplate}>
+          <Button size="sm" variant="outline" className="h-8" onClick={newTemplate}>
             <Plus /> Novo
           </Button>
-          <Button size="sm" variant="outline" onClick={remove}>
+          <Button size="sm" variant="outline" className="h-8" onClick={remove}>
             <Trash2 /> Excluir
           </Button>
-          <Button size="sm" onClick={save}>
+          <Button size="sm" className="h-8" onClick={save}>
             <Save /> Salvar
           </Button>
         </div>
       </div>
 
-      <div className="grid h-[calc(100%-3.5rem)] min-h-0 grid-cols-[280px_1fr_320px]">
+      <div className="grid h-[calc(100%-2.75rem)] min-h-0 grid-cols-[240px_minmax(360px,1fr)_280px]">
         <aside className="min-h-0 overflow-auto border-r bg-card/70">
-          <div className="border-b p-4 space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold">
+          <div className="space-y-2 border-b p-3">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <Layers3 className="h-4 w-4 text-primary" />
               Campos
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" size="sm" onClick={exportJson}>
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportJson}>
                 <Download /> Exportar
               </Button>
               <label>
@@ -247,7 +246,7 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                   className="hidden"
                   onChange={(e) => e.target.files?.[0] && importTemplateFile(e.target.files[0])}
                 />
-                <Button variant="outline" size="sm" asChild className="w-full">
+                <Button variant="outline" size="sm" asChild className="h-8 w-full text-xs">
                   <span>
                     <Upload /> Importar
                   </span>
@@ -266,13 +265,13 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                   type="button"
                   onClick={() => setSelectedField(field.key)}
                   className={cn(
-                    "mb-1 flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors",
+                    "mb-1 flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors",
                     active ? "border-primary bg-primary/10 text-primary" : "border-transparent hover:border-border hover:bg-muted/60"
                   )}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{FIELD_LABELS[field.key]}</span>
+                    <span className="block truncate text-xs font-medium">{FIELD_LABELS[field.key]}</span>
                     <span className="block truncate text-[11px] text-muted-foreground">
                       {field.x}mm, {field.y}mm · {field.widthMm ?? 0}x{field.heightMm ?? 0}mm
                     </span>
@@ -302,9 +301,9 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
         </aside>
 
         <main className="min-h-0 overflow-auto bg-[linear-gradient(45deg,#eef2f7_25%,transparent_25%),linear-gradient(-45deg,#eef2f7_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#eef2f7_75%),linear-gradient(-45deg,transparent_75%,#eef2f7_75%)] bg-[length:22px_22px] bg-[position:0_0,0_11px,11px_-11px,-11px_0]">
-          <div className="flex min-h-full items-center justify-center p-10">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground shadow-sm">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-md border bg-card px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm">
                 <span className="flex items-center gap-2">
                   <MousePointer2 className="h-3.5 w-3.5" />
                   {selected ? FIELD_LABELS[selected.key] : "Selecione um campo"}
@@ -324,17 +323,17 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
         </main>
 
         <aside className="min-h-0 overflow-auto border-l bg-card/80">
-          <div className="border-b p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold">
+          <div className="border-b px-3 py-2">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <Ruler className="h-4 w-4 text-primary" />
               Modelo
             </div>
           </div>
 
-          <div className="space-y-5 p-4">
-            <div className="space-y-2">
-              <Label>Nome do modelo</Label>
-              <Input value={current.name} onChange={(e) => update({ name: e.target.value })} />
+          <div className="space-y-3 p-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Nome do modelo</Label>
+              <Input className="h-8 text-xs" value={current.name} onChange={(e) => update({ name: e.target.value })} />
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -348,28 +347,29 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
               <NumberControl label="Espaco" value={current.columnGapMm ?? 2} min={0} onChange={(value) => update({ columnGapMm: Math.max(0, value) })} />
             </div>
 
-            <div className="space-y-2">
-              <Label>Fonte</Label>
-              <Input value={current.fontFamily} onChange={(e) => update({ fontFamily: e.target.value })} />
-            </div>
-
-            <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-              Arraste no canvas para mover. Use o ponto azul para redimensionar.
+            <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Fonte</Label>
+                <Input className="h-8 text-xs" value={current.fontFamily} onChange={(e) => update({ fontFamily: e.target.value })} />
+              </div>
+              <div className="rounded-md border bg-muted/40 px-2 py-1.5 text-[10px] leading-tight text-muted-foreground">
+                Arraste e redimensione no canvas.
+              </div>
             </div>
           </div>
 
           {selected && (
             <>
-              <div className="border-y p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold">
+              <div className="border-y px-3 py-2">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   <SelectedIcon className="h-4 w-4 text-primary" />
                   {FIELD_LABELS[selected.key]}
                 </div>
               </div>
 
-              <div className="space-y-5 p-4">
-                <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                  <span className="text-sm font-medium">Visivel</span>
+              <div className="space-y-3 p-3">
+                <div className="flex h-9 items-center justify-between rounded-md border px-3">
+                  <span className="text-xs font-medium">Visivel</span>
                   <Switch checked={selected.visible} onCheckedChange={(value) => updateField(selected.key, { visible: value })} />
                 </div>
 
@@ -383,11 +383,11 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                 <div className="grid grid-cols-2 gap-2">
                   <NumberControl label="Fonte" value={selected.fontSize} min={1} onChange={(value) => updateField(selected.key, { fontSize: value })} />
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-medium text-muted-foreground">Estilo</Label>
+                    <Label className="text-[10px] font-medium text-muted-foreground">Estilo</Label>
                     <Button
                       type="button"
                       variant={selected.bold ? "default" : "outline"}
-                      className="h-9 w-full"
+                      className="h-8 w-full text-xs"
                       onClick={() => updateField(selected.key, { bold: !selected.bold })}
                     >
                       Negrito
@@ -395,28 +395,22 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Prefixo</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs">Prefixo</Label>
                   <Input
+                    className="h-8 text-xs"
                     value={selected.label || ""}
                     placeholder="Ex.: R$"
                     onChange={(e) => updateField(selected.key, { label: e.target.value })}
                   />
                 </div>
 
-                <Button type="button" variant="outline" className="w-full" onClick={() => updateField(selected.key, { visible: false })}>
+                <Button type="button" variant="outline" className="h-8 w-full text-xs" onClick={() => updateField(selected.key, { visible: false })}>
                   <EyeOff /> Ocultar campo
                 </Button>
               </div>
             </>
           )}
-
-          <div className="border-t p-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Columns3 className="h-3.5 w-3.5" />
-              Impressao usa {current.columns || 1} coluna(s)
-            </div>
-          </div>
         </aside>
       </div>
     </div>
