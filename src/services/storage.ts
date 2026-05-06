@@ -52,6 +52,22 @@ export const storage = {
   clearHistory() {
     localStorage.removeItem(K.history);
   },
+  getPrintEvents(): PrintEvent[] {
+    try {
+      const raw = localStorage.getItem(K.prints);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  },
+  pushPrintEvent(e: PrintEvent) {
+    const list = storage.getPrintEvents();
+    list.unshift(e);
+    localStorage.setItem(K.prints, JSON.stringify(list.slice(0, 5000)));
+  },
+  clearPrintEvents() {
+    localStorage.removeItem(K.prints);
+  },
 };
 
 export const defaultTemplates = (): LabelTemplate[] => [
