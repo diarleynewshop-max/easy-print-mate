@@ -63,8 +63,12 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function getTemplateRightMargin(template: LabelTemplate) {
+  return template.marginRightMm ?? 0;
+}
+
 function getFieldWidth(template: LabelTemplate, field: LabelField) {
-  return field.widthMm ?? Math.max(8, template.widthMm - field.x - template.marginMm);
+  return field.widthMm ?? Math.max(8, template.widthMm - field.x - getTemplateRightMargin(template));
 }
 
 function getFieldHeight(field: LabelField) {
@@ -270,7 +274,12 @@ export function LabelPreview(props: Props) {
 
   if (forPrint) {
     const columns = Math.max(1, template.columns || 1);
-    const gap = template.columnGapMm ?? 2;
+    const columnGap = template.columnGapMm ?? 0;
+    const rowGap = template.rowGapMm ?? 0;
+    const marginLeft = template.marginLeftMm ?? 0;
+    const marginRight = template.marginRightMm ?? 0;
+    const marginTop = template.marginTopMm ?? 0;
+    const marginBottom = template.marginBottomMm ?? 0;
 
     return (
       <div
@@ -278,7 +287,9 @@ export function LabelPreview(props: Props) {
         style={{
           display: "grid",
           gridTemplateColumns: `repeat(${columns}, ${template.widthMm}mm)`,
-          gap: `${gap}mm`,
+          columnGap: `${columnGap}mm`,
+          rowGap: `${rowGap}mm`,
+          padding: `${marginTop}mm ${marginRight}mm ${marginBottom}mm ${marginLeft}mm`,
           alignItems: "start",
         }}
       >

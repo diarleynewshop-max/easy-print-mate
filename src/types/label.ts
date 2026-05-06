@@ -48,8 +48,13 @@ export interface LabelTemplate {
   widthMm: number;
   heightMm: number;
   marginMm: number;
+  marginLeftMm?: number;
+  marginRightMm?: number;
+  marginTopMm?: number;
+  marginBottomMm?: number;
   columns?: number;
   columnGapMm?: number;
+  rowGapMm?: number;
   fontFamily: string;
   fields: LabelField[];
 }

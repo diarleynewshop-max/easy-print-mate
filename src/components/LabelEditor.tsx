@@ -80,14 +80,24 @@ interface Props {
 }
 
 function normalizeTemplate(template: LabelTemplate): LabelTemplate {
+  const marginLeftMm = template.marginLeftMm ?? 0;
+  const marginRightMm = template.marginRightMm ?? 0;
+  const marginTopMm = template.marginTopMm ?? 0;
+  const marginBottomMm = template.marginBottomMm ?? 0;
+
   return {
     ...template,
     columns: Math.max(1, template.columns || 1),
-    columnGapMm: template.columnGapMm ?? 2,
+    columnGapMm: template.columnGapMm ?? 0,
+    rowGapMm: template.rowGapMm ?? 0,
+    marginLeftMm,
+    marginRightMm,
+    marginTopMm,
+    marginBottomMm,
     fields: template.fields.map((field) => {
       const normalized: LabelField = {
         ...field,
-        widthMm: field.widthMm ?? Math.max(8, template.widthMm - field.x - template.marginMm),
+        widthMm: field.widthMm ?? Math.max(8, template.widthMm - field.x - marginRightMm),
         heightMm: field.heightMm ?? (field.key === "barcode" ? 9 : Math.max(5, field.fontSize * 0.42)),
         fontFamily: field.fontFamily ?? template.fontFamily,
         align: field.align ?? (field.key === "barcode" ? "center" : "left"),
@@ -427,15 +437,22 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
               <Input className="h-8 text-xs" value={current.name} onChange={(e) => update({ name: e.target.value })} />
             </div>
 
+            <div className="grid grid-cols-2 gap-2">
+              <NumberControl label="Largura total" value={current.widthMm} min={1} step={0.5} onChange={(value) => update({ widthMm: value })} />
+              <NumberControl label="Altura etiqueta" value={current.heightMm} min={1} step={0.5} onChange={(value) => update({ heightMm: value })} />
+            </div>
+
             <div className="grid grid-cols-3 gap-2">
-              <NumberControl label="Largura" value={current.widthMm} min={1} onChange={(value) => update({ widthMm: value })} />
-              <NumberControl label="Altura" value={current.heightMm} min={1} onChange={(value) => update({ heightMm: value })} />
-              <NumberControl label="Margem" value={current.marginMm} min={0} onChange={(value) => update({ marginMm: value })} />
+              <NumberControl label="Colunas" value={current.columns || 1} min={1} max={6} onChange={(value) => update({ columns: Math.max(1, value) })} />
+              <NumberControl label="Esp. horiz." value={current.columnGapMm ?? 0} min={0} step={0.5} onChange={(value) => update({ columnGapMm: Math.max(0, value) })} />
+              <NumberControl label="Esp. vert." value={current.rowGapMm ?? 0} min={0} step={0.5} onChange={(value) => update({ rowGapMm: Math.max(0, value) })} />
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <NumberControl label="Colunas" value={current.columns || 1} min={1} max={6} onChange={(value) => update({ columns: Math.max(1, value) })} />
-              <NumberControl label="Espaco" value={current.columnGapMm ?? 2} min={0} onChange={(value) => update({ columnGapMm: Math.max(0, value) })} />
+              <NumberControl label="Esquerda" value={current.marginLeftMm ?? 0} min={0} step={0.5} onChange={(value) => update({ marginLeftMm: Math.max(0, value) })} />
+              <NumberControl label="Direita" value={current.marginRightMm ?? 0} min={0} step={0.5} onChange={(value) => update({ marginRightMm: Math.max(0, value) })} />
+              <NumberControl label="Topo" value={current.marginTopMm ?? 0} min={0} step={0.5} onChange={(value) => update({ marginTopMm: Math.max(0, value) })} />
+              <NumberControl label="Base" value={current.marginBottomMm ?? 0} min={0} step={0.5} onChange={(value) => update({ marginBottomMm: Math.max(0, value) })} />
             </div>
 
             <div className="grid grid-cols-[1fr_auto] items-end gap-2">
