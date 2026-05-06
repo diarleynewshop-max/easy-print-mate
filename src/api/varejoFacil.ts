@@ -12,6 +12,7 @@ export class VFError extends Error {
 type ProductResponse = {
   product?: Product;
   error?: string;
+  debug?: unknown;
 };
 
 export async function fetchProductByEan(cfg: VFConfig, ean: string, signal?: AbortSignal): Promise<Product> {
@@ -37,6 +38,10 @@ export async function fetchProductByEan(cfg: VFConfig, ean: string, signal?: Abo
     ? ((await response.json().catch(() => ({}))) as ProductResponse)
     : ({ error: await response.text().catch(() => "") } as ProductResponse);
 
+  if (data.debug) {
+    console.info("[Varejo Facil][debug]", data.debug);
+  }
+
   if (response.status === 401) {
     throw new VFError("ERP nao autorizado. Verifique token, usuario ou senha na Vercel.", 401);
   }
@@ -46,6 +51,11 @@ export async function fetchProductByEan(cfg: VFConfig, ean: string, signal?: Abo
   }
 
   if (!response.ok) {
+    console.warn("[Varejo Facil][erro]", {
+      status: response.status,
+      error: data.error,
+      debug: data.debug,
+    });
     throw new VFError(data.error || `Erro ${response.status} ao consultar ERP`, response.status);
   }
 

@@ -38,6 +38,17 @@ type JsonResult<T> = {
   text: string;
 };
 
+type DebugStep = {
+  step: string;
+  path: string;
+  status?: number;
+  ok?: boolean;
+  items?: number;
+  found?: boolean;
+  message?: string;
+  preview?: string;
+};
+
 const HOSTS: Record<EmpresaKey, string> = {
   NEWSHOP: "newshop.varejofacil.com",
   FACIL: "facil.varejofacil.com",
@@ -119,7 +130,13 @@ async function getAccessToken(empresa: EmpresaKey, baseUrl: string): Promise<str
   return token;
 }
 
-async function fetchErpJson<T>(baseUrl: string, token: string, path: string): Promise<JsonResult<T>> {
+async function fetchErpJson<T>(
+  baseUrl: string,
+  token: string,
+  path: string,
+  debug?: DebugStep[],
+  step = "fetch"
+): Promise<JsonResult<T>> {
   const response = await fetch(`${baseUrl}${path}`, {
     headers: {
       Authorization: token,
@@ -134,8 +151,21 @@ async function fetchErpJson<T>(baseUrl: string, token: string, path: string): Pr
   let data: T | null = null;
 
   if (contentType.includes("application/json") && text) {
-    data = JSON.parse(text) as T;
+    try {
+      data = JSON.parse(text) as T;
+    } catch {
+      data = null;
+    }
   }
+
+  debug?.push({
+    step,
+    path,
+    status: response.status,
+    ok: response.ok,
+    items: getItems(data).length,
+    preview: text.replace(/\s+/g, " ").slice(0, 240),
+  });
 
   return { response, data, text };
 }
@@ -156,34 +186,69 @@ function getItems<T>(data: unknown): T[] {
   return [];
 }
 
-async function buscarProdutoPorCodigo(baseUrl: string, token: string, codigo: string): Promise<{ produto: ErpProduto; ean: string } | null> {
+async function buscarProdutoPorCodigo(
+  baseUrl: string,
+  token: string,
+  codigo: string,
+  debug: DebugStep[]
+): Promise<{ produto: ErpProduto; ean: string } | null> {
   for (const candidato of normalizarEans(codigo)) {
     const fiql = encodeURIComponent(`id==${candidato}`);
-    const codAux = await fetchErpJson<{ items?: Array<{ id?: string; produtoId?: number }> }>(
+    const path = `/v1/produto/codigos-auxiliares?q=${fiql}&count=5`;
+    const codAux = await fetchErpJson<{ items?: Array<{ id?: string; produtoId?: number; tipo?: string }> }>(
       baseUrl,
       token,
-      `/v1/produto/codigos-auxiliares?q=${fiql}&count=5`
+      path,
+      debug,
+      `codigo-auxiliar:${candidato}`
     );
 
-    const item = getItems<{ id?: string; produtoId?: number }>(codAux.data).find((aux) => aux?.produtoId);
+    const items = getItems<{ id?: string; produtoId?: number; tipo?: string }>(codAux.data);
+    const item = items.find((aux) => aux?.produtoId && aux?.tipo === "EAN") || items.find((aux) => aux?.produtoId);
     if (item?.produtoId) {
-      const produto = await fetchErpJson<ErpProduto>(baseUrl, token, `/v1/produto/produtos/${item.produtoId}`);
+      const produto = await fetchErpJson<ErpProduto>(
+        baseUrl,
+        token,
+        `/v1/produto/produtos/${item.produtoId}`,
+        debug,
+        `produto-por-id:${item.produtoId}`
+      );
       if (produto.response.ok && produto.data?.id) {
+        debug.push({ step: "produto-encontrado", path, found: true, message: `produtoId=${item.produtoId}` });
         return { produto: produto.data, ean: item.id || candidato };
       }
+    }
+  }
+
+  if (/^\d+$/.test(codigo)) {
+    const direto = await fetchErpJson<ErpProduto>(
+      baseUrl,
+      token,
+      `/v1/produto/produtos/${encodeURIComponent(codigo)}`,
+      debug,
+      `produto-direto:${codigo}`
+    );
+
+    if (direto.response.ok && direto.data?.id) {
+      debug.push({ step: "produto-encontrado", path: `/v1/produto/produtos/${codigo}`, found: true, message: "fallback direto" });
+      return { produto: direto.data, ean: codigo };
     }
   }
 
   const consulta = await fetchErpJson<ErpProduto>(
     baseUrl,
     token,
-    `/v1/produto/produtos/consulta/${encodeURIComponent(codigo)}`
+    `/v1/produto/produtos/consulta/${encodeURIComponent(codigo)}`,
+    debug,
+    `produto-consulta:${codigo}`
   );
 
   if (consulta.response.ok && consulta.data?.id) {
+    debug.push({ step: "produto-encontrado", path: `/v1/produto/produtos/consulta/${codigo}`, found: true, message: "fallback consulta" });
     return { produto: consulta.data, ean: codigo };
   }
 
+  debug.push({ step: "produto-nao-encontrado", path: "-", found: false, message: `codigo=${codigo}` });
   return null;
 }
 
@@ -193,11 +258,19 @@ function normalizarPreco(precoVenda?: number, precoOferta?: number): number | un
   return undefined;
 }
 
-async function buscarPrecos(baseUrl: string, token: string, produtoId: string, lojaId?: number): Promise<PrecosNormalizados> {
+async function buscarPrecos(
+  baseUrl: string,
+  token: string,
+  produtoId: string,
+  lojaId: number | undefined,
+  debug: DebugStep[]
+): Promise<PrecosNormalizados> {
   const result = await fetchErpJson<ErpPreco[] | { items?: ErpPreco[] }>(
     baseUrl,
     token,
-    `/v1/produto/produtos/${encodeURIComponent(produtoId)}/precos`
+    `/v1/produto/produtos/${encodeURIComponent(produtoId)}/precos`,
+    debug,
+    `precos:${produtoId}`
   );
 
   if (!result.response.ok) return {};
@@ -215,12 +288,20 @@ async function buscarPrecos(baseUrl: string, token: string, produtoId: string, l
   };
 }
 
-async function buscarEstoque(baseUrl: string, token: string, produtoId: string, lojaId?: number): Promise<number | undefined> {
+async function buscarEstoque(
+  baseUrl: string,
+  token: string,
+  produtoId: string,
+  lojaId: number | undefined,
+  debug: DebugStep[]
+): Promise<number | undefined> {
   const fiql = encodeURIComponent(`produtoId==${produtoId}`);
   const result = await fetchErpJson<{ items?: ErpSaldo[] } | ErpSaldo[]>(
     baseUrl,
     token,
-    `/v1/estoque/saldos?q=${fiql}&count=100`
+    `/v1/estoque/saldos?q=${fiql}&count=100`,
+    debug,
+    `estoque:${produtoId}`
   );
 
   if (!result.response.ok) return undefined;
@@ -233,14 +314,14 @@ async function buscarEstoque(baseUrl: string, token: string, produtoId: string, 
   return selecionado?.saldo ?? selecionado?.saldoEstoque ?? selecionado?.estoque;
 }
 
-async function buscarSecao(baseUrl: string, token: string, secaoId?: number): Promise<string | undefined> {
+async function buscarSecao(baseUrl: string, token: string, secaoId: number | undefined, debug: DebugStep[]): Promise<string | undefined> {
   if (!secaoId) return undefined;
-  const result = await fetchErpJson<{ descricao?: string }>(baseUrl, token, `/v1/produto/secoes/${secaoId}`);
+  const result = await fetchErpJson<{ descricao?: string }>(baseUrl, token, `/v1/produto/secoes/${secaoId}`, debug, `secao:${secaoId}`);
   return result.response.ok ? result.data?.descricao : undefined;
 }
 
-async function montarProduto(baseUrl: string, token: string, codigo: string, lojaId?: number) {
-  const encontrado = await buscarProdutoPorCodigo(baseUrl, token, codigo);
+async function montarProduto(baseUrl: string, token: string, codigo: string, lojaId: number | undefined, debug: DebugStep[]) {
+  const encontrado = await buscarProdutoPorCodigo(baseUrl, token, codigo, debug);
   if (!encontrado?.produto?.id) {
     const error = new Error(`Produto nao encontrado para o codigo ${codigo}`);
     (error as Error & { status?: number }).status = 404;
@@ -249,9 +330,18 @@ async function montarProduto(baseUrl: string, token: string, codigo: string, loj
 
   const produtoId = String(encontrado.produto.id);
   const [precos, estoque, secao] = await Promise.all([
-    buscarPrecos(baseUrl, token, produtoId, lojaId).catch((): PrecosNormalizados => ({})),
-    buscarEstoque(baseUrl, token, produtoId, lojaId).catch(() => undefined),
-    buscarSecao(baseUrl, token, encontrado.produto.secaoId).catch(() => undefined),
+    buscarPrecos(baseUrl, token, produtoId, lojaId, debug).catch((error): PrecosNormalizados => {
+      debug.push({ step: "precos-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
+      return {};
+    }),
+    buscarEstoque(baseUrl, token, produtoId, lojaId, debug).catch((error) => {
+      debug.push({ step: "estoque-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
+      return undefined;
+    }),
+    buscarSecao(baseUrl, token, encontrado.produto.secaoId, debug).catch((error) => {
+      debug.push({ step: "secao-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
+      return undefined;
+    }),
   ]);
 
   return {
@@ -285,14 +375,25 @@ export default async function handler(req: any, res: any) {
   const baseUrl = resolveBaseUrl(empresa);
   const lojaParam = getSingle(req.query.loja).trim() || getEnv(empresa, "LOJA_ID");
   const lojaId = lojaParam ? Number(lojaParam) : undefined;
+  const debug: DebugStep[] = [
+    {
+      step: "entrada",
+      path: "/api/varejo-facil",
+      message: `empresa=${empresa}; codigo=${codigo}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}`,
+    },
+  ];
 
   try {
     const token = await getAccessToken(empresa, baseUrl);
-    const product = await montarProduto(baseUrl, token, codigo, Number.isFinite(lojaId) ? lojaId : undefined);
-    return res.status(200).json({ product, empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null });
+    debug.push({ step: "auth", path: `${baseUrl}/auth`, found: true, message: "token disponivel" });
+    const product = await montarProduto(baseUrl, token, codigo, Number.isFinite(lojaId) ? lojaId : undefined, debug);
+    console.info("[varejo-facil] produto resolvido", { empresa, codigo, produtoId: product.id, steps: debug });
+    return res.status(200).json({ product, empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null, debug });
   } catch (error) {
     const status = (error as Error & { status?: number }).status || 500;
     const message = error instanceof Error ? error.message : "Erro desconhecido";
-    return res.status(status).json({ error: message, empresa });
+    debug.push({ step: "erro-final", path: "-", status, message });
+    console.warn("[varejo-facil] falha na consulta", { empresa, codigo, status, message, steps: debug });
+    return res.status(status).json({ error: message, empresa, debug });
   }
 }
