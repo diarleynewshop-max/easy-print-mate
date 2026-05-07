@@ -358,12 +358,9 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
     (current.marginLeftMm ?? 0) +
     (current.marginRightMm ?? 0);
 
-  // Sheet preview rows (2 lines for visualization)
-  const sheetRows = 2;
-
   const sheetCells = useMemo(
     () => Array.from({ length: cols * sheetRows }),
-    [cols],
+    [cols, sheetRows],
   );
 
   return (
