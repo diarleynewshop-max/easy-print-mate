@@ -3,6 +3,7 @@ import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/ty
 import { storage, defaultTemplates } from "@/services/storage";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
 import { printService } from "@/services/printService";
+import { downloadEplPrn } from "@/services/eplService";
 import { ProductSearch } from "@/components/ProductSearch";
 import { LabelPreview } from "@/components/LabelPreview";
 import { LabelEditor } from "@/components/LabelEditor";
@@ -12,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Printer, Tag, Settings, History, Pencil, Loader2, Trash2, BarChart3 } from "lucide-react";
+import { Download, Printer, Tag, Settings, History, Pencil, Loader2, Trash2, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type View = "scan" | "editor" | "config" | "metrics";
@@ -92,6 +93,28 @@ const Index = () => {
     setPrintEvents(storage.getPrintEvents());
     lastActionRef.current = now;
     printService.printBrowser();
+    setTimeout(() => {
+      setCode("");
+      focusInput();
+    }, 300);
+  };
+
+  const handleDownloadPrn = () => {
+    if (!product) return toast.error("Nenhum produto selecionado");
+    const now = Date.now();
+    const evt: PrintEvent = {
+      ean: product.ean,
+      descricao: product.descricao,
+      quantidade: copies,
+      templateId: activeTemplateId,
+      at: now,
+      durationMs: now - lastActionRef.current,
+    };
+    storage.pushPrintEvent(evt);
+    setPrintEvents(storage.getPrintEvents());
+    lastActionRef.current = now;
+    downloadEplPrn(activeTemplate, product, copies);
+    toast.success("PRN EPL gerado");
     setTimeout(() => {
       setCode("");
       focusInput();
@@ -223,6 +246,9 @@ const Index = () => {
                 </div>
                 <Button onClick={handlePrint} disabled={!product} className="w-full h-12 text-base">
                   <Printer /> Imprimir {copies > 1 ? `(${copies})` : ""}
+                </Button>
+                <Button onClick={handleDownloadPrn} disabled={!product} variant="outline" className="w-full h-10">
+                  <Download /> Baixar PRN Bartender
                 </Button>
               </div>
             </aside>

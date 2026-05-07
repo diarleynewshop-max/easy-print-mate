@@ -75,6 +75,34 @@ function getFieldHeight(field: LabelField) {
   return field.heightMm ?? (field.key === "barcode" ? 10 : Math.max(5, field.fontSize * 0.42));
 }
 
+function overlaps(aStart: number, aSize: number, bStart: number, bSize: number) {
+  return aStart < bStart + bSize && bStart < aStart + aSize;
+}
+
+function getSafeFieldSize(template: LabelTemplate, field: LabelField, visibleFields: LabelField[]) {
+  let widthMm = getFieldWidth(template, field);
+  let heightMm = getFieldHeight(field);
+
+  if (field.key !== "descricao") return { widthMm, heightMm };
+
+  for (const other of visibleFields) {
+    if (other.key === field.key) continue;
+
+    const otherWidthMm = getFieldWidth(template, other);
+    const otherHeightMm = getFieldHeight(other);
+
+    if (other.x > field.x && overlaps(field.y, heightMm, other.y, otherHeightMm)) {
+      widthMm = Math.min(widthMm, Math.max(2, other.x - field.x - 0.5));
+    }
+
+    if (other.y > field.y && overlaps(field.x, widthMm, other.x, otherWidthMm)) {
+      heightMm = Math.min(heightMm, Math.max(2, other.y - field.y - 0.2));
+    }
+  }
+
+  return { widthMm, heightMm };
+}
+
 function getBarcodeFormat(ean: string, field?: LabelField) {
   if (field?.barcodeFormat && field.barcodeFormat !== "auto") return field.barcodeFormat;
   return ean.length === 13 ? "EAN13" : "CODE128";
@@ -129,6 +157,7 @@ function SingleLabel({
 }: Props) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const measure = (mm: number) => (forPrint ? `${mm}mm` : `${mm * MM_TO_PX}px`);
+  const visibleFields = template.fields.filter((f) => f.visible);
   const barcodeField = template.fields.find((f) => f.key === "barcode");
   const barcodeRef = useBarcode(
     product?.codigo_barras || product?.ean || "7891234567890",
@@ -198,11 +227,9 @@ function SingleLabel({
         boxShadow: editable ? "0 18px 50px rgba(15, 23, 42, .16)" : undefined,
       }}
     >
-      {template.fields
-        .filter((f) => f.visible)
+      {visibleFields
         .map((f) => {
-          const widthMm = getFieldWidth(template, f);
-          const heightMm = getFieldHeight(f);
+          const { widthMm, heightMm } = getSafeFieldSize(template, f, visibleFields);
           const selected = editable && selectedField === f.key;
           const commonStyle: React.CSSProperties = {
             position: "absolute",
@@ -213,6 +240,7 @@ function SingleLabel({
             outline: selected ? "1.5px solid #2563eb" : editable ? "1px dashed rgba(37,99,235,.25)" : "none",
             cursor: editable ? "move" : "default",
             boxSizing: "border-box",
+            overflow: "hidden",
           };
 
           return (
@@ -227,6 +255,8 @@ function SingleLabel({
               ) : (
                 <div
                   style={{
+                    width: "100%",
+                    height: "100%",
                     fontSize: `${f.fontSize}pt`,
                     fontFamily: f.fontFamily || template.fontFamily,
                     fontWeight: f.bold ? 700 : 400,
@@ -236,6 +266,7 @@ function SingleLabel({
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
+                    boxSizing: "border-box",
                   }}
                 >
                   {f.label ? `${f.label} ` : ""}
@@ -280,23 +311,46 @@ export function LabelPreview(props: Props) {
     const marginRight = template.marginRightMm ?? 0;
     const marginTop = template.marginTopMm ?? 0;
     const marginBottom = template.marginBottomMm ?? 0;
+    const rows = Math.max(1, Math.ceil(copies / columns));
+    const pageWidthMm = columns * template.widthMm + (columns - 1) * columnGap + marginLeft + marginRight;
+    const pageHeightMm = rows * template.heightMm + Math.max(0, rows - 1) * rowGap + marginTop + marginBottom;
 
     return (
-      <div
-        id="print-area"
-        style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${columns}, ${template.widthMm}mm)`,
-          columnGap: `${columnGap}mm`,
-          rowGap: `${rowGap}mm`,
-          padding: `${marginTop}mm ${marginRight}mm ${marginBottom}mm ${marginLeft}mm`,
-          alignItems: "start",
-        }}
-      >
-        {Array.from({ length: copies }).map((_, i) => (
-          <SingleLabel key={i} template={template} product={product} forPrint />
-        ))}
-      </div>
+      <>
+        <style>
+          {`
+            @media print {
+              @page {
+                size: ${pageWidthMm}mm ${pageHeightMm}mm;
+                margin: 0;
+              }
+              html,
+              body {
+                width: ${pageWidthMm}mm;
+                min-height: ${pageHeightMm}mm;
+              }
+            }
+          `}
+        </style>
+        <div
+          id="print-area"
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${columns}, ${template.widthMm}mm)`,
+            columnGap: `${columnGap}mm`,
+            rowGap: `${rowGap}mm`,
+            width: `${pageWidthMm}mm`,
+            minHeight: `${pageHeightMm}mm`,
+            padding: `${marginTop}mm ${marginRight}mm ${marginBottom}mm ${marginLeft}mm`,
+            alignItems: "start",
+            boxSizing: "border-box",
+          }}
+        >
+          {Array.from({ length: copies }).map((_, i) => (
+            <SingleLabel key={i} template={template} product={product} forPrint />
+          ))}
+        </div>
+      </>
     );
   }
 
