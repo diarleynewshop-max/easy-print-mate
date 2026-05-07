@@ -280,8 +280,6 @@ function Section({
   );
 }
 
-const MM_TO_PX = 3.78;
-
 export function LabelEditor({ templates, activeId, onChange }: Props) {
   const [local, setLocal] = useState<LabelTemplate[]>(templates.map(normalizeTemplate));
   const [currentId, setCurrentId] = useState(activeId);
