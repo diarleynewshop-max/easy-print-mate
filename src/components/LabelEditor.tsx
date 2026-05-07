@@ -286,6 +286,7 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
   const [selectedField, setSelectedField] = useState<LabelFieldKey | null>("barcode");
   const [zoom, setZoom] = useState(1.4);
   const [previewMode, setPreviewMode] = useState<"single" | "sheet">("single");
+  const [sheetRows, setSheetRows] = useState<number>(2);
   const current = local.find((t) => t.id === currentId) || local[0];
   const selected = current.fields.find((field) => field.key === selectedField) || current.fields.find((field) => field.visible) || current.fields[0];
   const SelectedIcon = selected ? FIELD_ICONS[selected.key] : MousePointer2;
@@ -357,12 +358,9 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
     (current.marginLeftMm ?? 0) +
     (current.marginRightMm ?? 0);
 
-  // Sheet preview rows (2 lines for visualization)
-  const sheetRows = 2;
-
   const sheetCells = useMemo(
     () => Array.from({ length: cols * sheetRows }),
-    [cols],
+    [cols, sheetRows],
   );
 
   return (
@@ -514,6 +512,25 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                 <LayoutGrid className="h-3 w-3" /> Folha ({cols} col)
               </button>
             </div>
+
+            {previewMode === "sheet" && (
+              <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
+                <span className="px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Linhas</span>
+                {[1, 2, 3].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setSheetRows(r)}
+                    className={cn(
+                      "min-w-[24px] rounded px-2 py-1 text-[11px] font-medium transition-colors",
+                      sheetRows === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
               <MousePointer2 className="h-3 w-3" />
