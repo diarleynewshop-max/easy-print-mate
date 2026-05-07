@@ -679,29 +679,13 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2">
               <NumberControl
                 label="Colunas"
                 value={current.columns || 1}
                 min={1}
                 max={8}
                 onChange={(value) => update({ columns: Math.max(1, value) })}
-              />
-              <NumberControl
-                label="Esp. H"
-                suffix="mm"
-                value={current.columnGapMm ?? 0}
-                min={0}
-                step={0.5}
-                onChange={(value) => update({ columnGapMm: Math.max(0, value) })}
-              />
-              <NumberControl
-                label="Esp. V"
-                suffix="mm"
-                value={current.rowGapMm ?? 0}
-                min={0}
-                step={0.5}
-                onChange={(value) => update({ rowGapMm: Math.max(0, value) })}
               />
             </div>
 
@@ -717,6 +701,29 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
               <NumberControl label="Direita" suffix="mm" value={current.marginRightMm ?? 0} min={0} step={0.5} onChange={(value) => update({ marginRightMm: Math.max(0, value) })} />
               <NumberControl label="Topo" suffix="mm" value={current.marginTopMm ?? 0} min={0} step={0.5} onChange={(value) => update({ marginTopMm: Math.max(0, value) })} />
               <NumberControl label="Base" suffix="mm" value={current.marginBottomMm ?? 0} min={0} step={0.5} onChange={(value) => update({ marginBottomMm: Math.max(0, value) })} />
+            </div>
+            <div className="space-y-2 rounded-md border bg-background p-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Espaço entre etiquetas
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <NumberControl
+                  label="Horizontal"
+                  suffix="mm"
+                  value={current.columnGapMm ?? 0}
+                  min={0}
+                  step={0.5}
+                  onChange={(value) => update({ columnGapMm: Math.max(0, value) })}
+                />
+                <NumberControl
+                  label="Vertical"
+                  suffix="mm"
+                  value={current.rowGapMm ?? 0}
+                  min={0}
+                  step={0.5}
+                  onChange={(value) => update({ rowGapMm: Math.max(0, value) })}
+                />
+              </div>
             </div>
           </Section>
 
