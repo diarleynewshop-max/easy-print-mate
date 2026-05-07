@@ -513,6 +513,25 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
               </button>
             </div>
 
+            {previewMode === "sheet" && (
+              <div className="flex items-center gap-1 rounded-md border bg-background p-0.5">
+                <span className="px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Linhas</span>
+                {[1, 2, 3].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setSheetRows(r)}
+                    className={cn(
+                      "min-w-[24px] rounded px-2 py-1 text-[11px] font-medium transition-colors",
+                      sheetRows === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
               <MousePointer2 className="h-3 w-3" />
               {selected ? FIELD_LABELS[selected.key] : "Selecione um campo"}
