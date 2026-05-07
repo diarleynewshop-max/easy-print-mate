@@ -26,7 +26,7 @@ import {
   Plus,
   Ruler,
   Save,
-  Settings2,
+  
   Square,
   Tags,
   Trash2,
