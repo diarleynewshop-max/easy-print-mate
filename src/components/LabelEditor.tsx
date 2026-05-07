@@ -286,6 +286,7 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
   const [selectedField, setSelectedField] = useState<LabelFieldKey | null>("barcode");
   const [zoom, setZoom] = useState(1.4);
   const [previewMode, setPreviewMode] = useState<"single" | "sheet">("single");
+  const [sheetRows, setSheetRows] = useState<number>(2);
   const current = local.find((t) => t.id === currentId) || local[0];
   const selected = current.fields.find((field) => field.key === selectedField) || current.fields.find((field) => field.visible) || current.fields[0];
   const SelectedIcon = selected ? FIELD_ICONS[selected.key] : MousePointer2;
