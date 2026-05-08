@@ -11,8 +11,8 @@ const RAW_PRINTER_NAME = process.env.RAW_PRINTER_NAME || "ELGIN L42PRO FULL";
 function rawPrintMiddleware() {
   return {
     name: "raw-print-middleware",
-    configureServer(server) {
-      server.middlewares.use("/api/print-raw", async (req, res) => {
+    configureServer(server: any) {
+      server.middlewares.use("/api/print-raw", async (req: any, res: any) => {
         if (req.method !== "POST") {
           res.statusCode = 405;
           res.end("Method not allowed");
