@@ -422,6 +422,23 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
           <Button size="sm" variant="outline" className="h-8" onClick={newTemplate}>
             <Plus /> Novo
           </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => {
+            const id = `tpl-${Date.now()}`;
+            const dup = normalizeTemplate({ ...current, id, name: `${current.name} (cópia)` });
+            setLocal([...local, dup]);
+            setCurrentId(id);
+            toast.success("Modelo duplicado");
+          }}>
+            <Copy /> Duplicar
+          </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => {
+            const next = restoreElginPreset(local);
+            setLocal(next);
+            setCurrentId(ELGIN_PRESET_ID);
+            toast.success("Preset Elgin restaurado");
+          }}>
+            <RotateCw /> Preset Elgin
+          </Button>
           <Button size="sm" variant="outline" className="h-8" onClick={remove}>
             <Trash2 /> Excluir
           </Button>
