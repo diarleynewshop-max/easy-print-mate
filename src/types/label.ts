@@ -100,3 +100,9 @@ export interface PrintEvent {
   durationMs: number;
   status?: "success" | "error";
 }
+
+export interface PrintQueueItem {
+  id: string;
+  product: Product;
+  quantity: number;
+}

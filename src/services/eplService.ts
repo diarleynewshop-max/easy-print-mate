@@ -1,4 +1,4 @@
-import { LabelField, LabelTemplate, Product } from "@/types/label";
+import { LabelField, LabelTemplate, PrintQueueItem, Product } from "@/types/label";
 
 const DOTS_PER_MM = 8;
 
@@ -151,6 +151,84 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
 
   lines.push(`P${rowCopies}`);
   return `${lines.join("\r\n")}\r\n`;
+}
+
+function eplHeader(template: LabelTemplate) {
+  const columns = Math.max(1, template.columns || 1);
+  const columnGapMm = template.columnGapMm ?? 0;
+  const rowGapMm = template.rowGapMm ?? 0;
+  const marginLeftMm = template.marginLeftMm ?? 0;
+  const marginTopMm = template.marginTopMm ?? 0;
+  const marginRightMm = template.marginRightMm ?? 0;
+  const marginBottomMm = template.marginBottomMm ?? 0;
+  const calculatedPageWidthMm =
+    columns * template.widthMm + Math.max(0, columns - 1) * columnGapMm + marginLeftMm + marginRightMm;
+  const pageWidthMm =
+    template.paperWidthMm && template.paperWidthMm > 0 ? template.paperWidthMm : calculatedPageWidthMm;
+  const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
+
+  return {
+    columns,
+    columnGapMm,
+    marginLeftMm,
+    marginTopMm,
+    pageLines: [
+      "I8,1,001",
+      `q${mmToDots(pageWidthMm)}`,
+      "OD",
+      "JF",
+      "WN",
+      "ZT",
+      `Q${mmToDots(pageHeightMm)},${mmToDots(rowGapMm)}`,
+      "N",
+    ],
+  };
+}
+
+function appendProductFields(lines: string[], template: LabelTemplate, product: Product, xOffsetMm: number) {
+  template.fields
+    .filter((field) => field.visible)
+    .forEach((field) => {
+      const x = mmToDots(xOffsetMm + field.x);
+      const y = mmToDots((template.marginTopMm ?? 0) + field.y);
+
+      if (field.key === "barcode") {
+        const barcode = cleanText(product.codigo_barras || product.ean);
+        if (!barcode) return;
+        const narrow = autoBarcodeNarrow(field, template, barcode);
+        const wide = Math.max(2, Math.min(4, field.barcodeWideRatio ?? 3));
+        const printText = field.barcodeDisplayValue === false ? "N" : "B";
+        lines.push(`B${x},${y},0,${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field)},${printText},"${barcode}"`);
+        return;
+      }
+
+      const value = cleanText(fieldValue(field, product));
+      if (!value) return;
+      const { font, h, w } = textFont(field);
+      lines.push(`A${x},${y},0,${font},${h},${w},N,"${value}"`);
+    });
+}
+
+export function buildEplBatchPrn(template: LabelTemplate, queue: PrintQueueItem[]) {
+  const expanded = queue.flatMap((item) =>
+    Array.from({ length: Math.max(0, item.quantity) }, () => item.product),
+  );
+  if (!expanded.length) return "";
+
+  const { columns, columnGapMm, marginLeftMm, pageLines } = eplHeader(template);
+  const jobs: string[] = [];
+
+  for (let start = 0; start < expanded.length; start += columns) {
+    const lines = [...pageLines];
+    expanded.slice(start, start + columns).forEach((product, col) => {
+      const offsetX = marginLeftMm + col * (template.widthMm + columnGapMm);
+      appendProductFields(lines, template, product, offsetX);
+    });
+    lines.push("P1");
+    jobs.push(lines.join("\r\n"));
+  }
+
+  return `${jobs.join("\r\n")}\r\n`;
 }
 
 export function buildTestPrn(template: LabelTemplate) {

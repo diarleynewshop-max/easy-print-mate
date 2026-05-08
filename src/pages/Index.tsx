@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
+import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent, PrintQueueItem } from "@/types/label";
 import { storage, defaultTemplates, ensureDefaultTemplates, restoreElginPreset } from "@/services/storage";
 import { ELGIN_PRESET_ID } from "@/services/presets";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
-import { buildEplPrn, buildTestPrn, buildCalibrationPrn, downloadEplPrn } from "@/services/eplService";
+import { buildEplBatchPrn, buildEplPrn, buildTestPrn, buildCalibrationPrn, downloadEplPrn } from "@/services/eplService";
 import { printService } from "@/services/printService";
 import { validateTemplate, computeHorizontalSpacing } from "@/services/labelValidation";
 import { usePrintServerStatus } from "@/hooks/usePrintServerStatus";
@@ -49,6 +49,7 @@ const Index = () => {
   const [errorDebug, setErrorDebug] = useState<unknown>(null);
   const [copies, setCopies] = useState(3);
   const [previewTab, setPreviewTab] = useState<"label" | "sheet">("label");
+  const [printQueue, setPrintQueue] = useState<PrintQueueItem[]>([]);
   const lastActionRef = useRef<number>(Date.now());
   const lastPrintedRef = useRef<Product | null>(null);
   const [printEvents, setPrintEvents] = useState<PrintEvent[]>(() => storage.getPrintEvents());
@@ -82,6 +83,8 @@ const Index = () => {
 
   const cols = Math.max(1, activeTemplate.columns || 1);
   const horizontalSpacing = computeHorizontalSpacing(activeTemplate);
+  const queueTotal = printQueue.reduce((sum, item) => sum + item.quantity, 0);
+  const queueRows = Math.ceil(queueTotal / cols);
 
   useEffect(() => {
     document.title = "Easy Print Mate — Elgin L42PRO";
@@ -160,6 +163,55 @@ const Index = () => {
     }
   };
 
+  const handleAddToQueue = () => {
+    if (!product) return toast.error("Nenhum produto selecionado");
+    setPrintQueue((items) => {
+      const existing = items.find((item) => item.product.ean === product.ean);
+      if (existing) {
+        return items.map((item) =>
+          item.id === existing.id ? { ...item, quantity: item.quantity + copies } : item,
+        );
+      }
+      return [
+        ...items,
+        {
+          id: `${product.ean}-${Date.now()}`,
+          product,
+          quantity: copies,
+        },
+      ];
+    });
+    toast.success(`${copies} etiqueta(s) adicionada(s) à fila`);
+    setCode("");
+    focusInput();
+  };
+
+  const updateQueueItem = (id: string, quantity: number) => {
+    setPrintQueue((items) =>
+      items
+        .map((item) => (item.id === id ? { ...item, quantity: Math.max(1, quantity) } : item))
+        .filter((item) => item.quantity > 0),
+    );
+  };
+
+  const removeQueueItem = (id: string) => {
+    setPrintQueue((items) => items.filter((item) => item.id !== id));
+  };
+
+  const handlePrintQueue = async () => {
+    if (!printQueue.length) return toast.error("Fila vazia");
+    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
+    if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
+    const ok = await sendRaw(buildEplBatchPrn(activeTemplate, printQueue), `Fila com ${queueTotal} etiqueta(s)`);
+    printQueue.forEach((item) => recordEvent(item.product, item.quantity, ok ? "success" : "error"));
+    if (ok) {
+      lastPrintedRef.current = printQueue[printQueue.length - 1]?.product || null;
+      setPrintQueue([]);
+      setCode("");
+      focusInput();
+    }
+  };
+
   const handleReprintLast = async () => {
     const p = lastPrintedRef.current;
     if (!p) return toast.error("Nenhuma impressão anterior");
@@ -201,6 +253,7 @@ const Index = () => {
 
   const lastEvent = printEvents[0];
   const printDisabled = !product || printerStatus !== "online" || hasErrors || copies < 1;
+  const queuePrintDisabled = !printQueue.length || printerStatus !== "online" || hasErrors;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
@@ -406,6 +459,15 @@ const Index = () => {
                   <Printer /> Imprimir {copies} etiqueta{copies > 1 ? "s" : ""}
                 </Button>
 
+                <Button
+                  onClick={handleAddToQueue}
+                  disabled={!product || copies < 1}
+                  variant="secondary"
+                  className="w-full h-10 text-sm"
+                >
+                  <Plus className="h-4 w-4" /> Adicionar à fila
+                </Button>
+
                 <div className="grid grid-cols-2 gap-2">
                   <Button onClick={handleReprintLast} variant="outline" size="sm" className="h-9 text-xs" disabled={!lastPrintedRef.current || printerStatus !== "online"}>
                     <RotateCw className="h-3.5 w-3.5" /> Reimprimir último
@@ -420,6 +482,70 @@ const Index = () => {
                     <Crosshair className="h-3.5 w-3.5" /> Calibração
                   </Button>
                 </div>
+              </div>
+
+              <div className="rounded-lg border bg-card p-3 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold">Fila de impressão</h3>
+                    <p className="text-[10px] text-muted-foreground">
+                      {queueTotal} etiqueta{queueTotal === 1 ? "" : "s"} · {queueRows || 0} carreira{queueRows === 1 ? "" : "s"} · {cols} colunas
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 px-2 text-xs"
+                    disabled={!printQueue.length}
+                    onClick={() => setPrintQueue([])}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Limpar
+                  </Button>
+                </div>
+
+                {printQueue.length === 0 ? (
+                  <div className="rounded-md border border-dashed bg-muted/30 p-3 text-center text-xs text-muted-foreground">
+                    Adicione produtos para preencher as colunas sem desperdiçar etiqueta.
+                  </div>
+                ) : (
+                  <div className="max-h-56 space-y-2 overflow-auto pr-1">
+                    {printQueue.map((item, index) => (
+                      <div key={item.id} className="rounded-md border bg-background p-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-[10px] font-mono text-muted-foreground">Item {index + 1} · {item.product.ean}</div>
+                            <div className="truncate text-xs font-medium">{item.product.descricao}</div>
+                          </div>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeQueueItem(item.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQueueItem(item.id, item.quantity - 1)}>
+                            <Minus className="h-3.5 w-3.5" />
+                          </Button>
+                          <div className="w-12 text-center text-sm font-bold tabular-nums">{item.quantity}</div>
+                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQueueItem(item.id, item.quantity + 1)}>
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                          <div className="ml-auto text-[10px] text-muted-foreground">
+                            ocupa {Math.ceil(item.quantity / cols)} carreira{Math.ceil(item.quantity / cols) === 1 ? "" : "s"} se sozinho
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <QueueGridPreview queue={printQueue} columns={cols} />
+
+                <Button
+                  onClick={handlePrintQueue}
+                  disabled={queuePrintDisabled}
+                  className="w-full h-11 text-sm"
+                >
+                  <Printer className="h-4 w-4" /> Imprimir fila sem desperdício
+                </Button>
               </div>
             </aside>
           </div>
@@ -545,6 +671,41 @@ function SheetPreviewMini({ template, product, copies }: { template: LabelTempla
       <p className="text-[10px] text-muted-foreground text-center">
         {rows} carreira{rows > 1 ? "s" : ""} × {cols} coluna{cols > 1 ? "s" : ""} = {rows * cols} etiquetas (qtd: {copies})
       </p>
+    </div>
+  );
+}
+
+function QueueGridPreview({ queue, columns }: { queue: PrintQueueItem[]; columns: number }) {
+  const expanded = queue.flatMap((item, itemIndex) =>
+    Array.from({ length: item.quantity }, () => itemIndex + 1),
+  );
+  if (!expanded.length) return null;
+
+  const rows = Math.ceil(expanded.length / columns);
+  const cells = Array.from({ length: rows * columns }, (_, index) => expanded[index] || null);
+  const waste = cells.filter((cell) => cell == null).length;
+
+  return (
+    <div className="rounded-md border bg-background p-2">
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      >
+        {cells.map((cell, index) => (
+          <div
+            key={index}
+            className={cn(
+              "flex h-7 items-center justify-center rounded border text-xs font-bold tabular-nums",
+              cell ? "border-primary/30 bg-primary/10 text-primary" : "border-dashed bg-muted/30 text-muted-foreground",
+            )}
+          >
+            {cell ? cell : ""}
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 text-center text-[10px] text-muted-foreground">
+        {waste === 0 ? "Sem coluna em branco." : `${waste} coluna${waste > 1 ? "s" : ""} em branco na última carreira.`}
+      </div>
     </div>
   );
 }
