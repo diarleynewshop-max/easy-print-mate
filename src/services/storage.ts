@@ -1,4 +1,5 @@
 import { LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
+import { elginPreset, ELGIN_PRESET_ID } from "./presets";
 
 const K = {
   templates: "vf_label_templates",
