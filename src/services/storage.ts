@@ -84,9 +84,9 @@ export function ensureDefaultTemplates(templates: LabelTemplate[]) {
 export const defaultTemplates = (): LabelTemplate[] => [
   {
     id: "etiqueta-prn-3col-28x15",
-    name: "PRN 3 COLUNAS 28x15",
+    name: "PRN 3 COLUNAS 28x14",
     widthMm: 28,
-    heightMm: 15,
+    heightMm: 14,
     marginMm: 0,
     marginLeftMm: 0,
     marginRightMm: 0,
@@ -99,7 +99,7 @@ export const defaultTemplates = (): LabelTemplate[] => [
     fontFamily: "Arial, sans-serif",
     fields: [
       { key: "descricao", visible: true, x: 1, y: 1, widthMm: 26, heightMm: 3, fontSize: 4, bold: true },
-      { key: "barcode", visible: true, x: 1, y: 6, widthMm: 26, heightMm: 6, fontSize: 5 },
+      { key: "barcode", visible: true, x: 1, y: 5.5, widthMm: 26, heightMm: 5.5, fontSize: 5 },
       { key: "codigoInterno", visible: false, x: 1, y: 1, widthMm: 6, heightMm: 3, fontSize: 4 },
       { key: "precoVarejo", visible: false, x: 20, y: 1, widthMm: 8, heightMm: 3, fontSize: 4, bold: true, label: "" },
       { key: "ean", visible: false, x: 1, y: 11, widthMm: 26, heightMm: 3, fontSize: 4 },
