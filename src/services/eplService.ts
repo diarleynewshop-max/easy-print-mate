@@ -20,10 +20,15 @@ function formatBRL(value?: number) {
   return value.toFixed(2).replace(".", ",");
 }
 
+function firstDescriptionToken(product: Product) {
+  const value = cleanText(product.descricao);
+  return value.split(/\s+/)[0] || cleanText(product.codigoInterno || "");
+}
+
 function fieldValue(field: LabelField, product: Product) {
   switch (field.key) {
     case "descricao":
-      return cleanText(`${product.codigoInterno || ""} ${product.descricao}`.trim()).slice(0, 22);
+      return firstDescriptionToken(product).slice(0, 12);
     case "precoVarejo":
       return `${field.label ? `${field.label} ` : ""}${formatBRL(product.precoVarejo)}`.trim();
     case "precoAtacado":
