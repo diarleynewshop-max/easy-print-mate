@@ -941,6 +941,31 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                 </div>
               )}
 
+              {selected.key === "descricao" && (
+                <div className="space-y-2 rounded-md border bg-background p-2">
+                  <SelectControl
+                    label="Conteúdo do texto"
+                    value={selected.descriptionMode || "first-word"}
+                    options={[
+                      { value: "first-word", label: "Primeira palavra" },
+                      { value: "first-two-words", label: "Primeiras 2 palavras" },
+                      { value: "internal-code", label: "Código interno" },
+                      { value: "full", label: "Descrição completa" },
+                      { value: "custom", label: "Texto customizado" },
+                    ]}
+                    onChange={(value) => updateField(selected.key, { descriptionMode: value as never })}
+                  />
+                  {selected.descriptionMode === "custom" && (
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="Texto fixo a imprimir"
+                      value={selected.customText || ""}
+                      onChange={(e) => updateField(selected.key, { customText: e.target.value })}
+                    />
+                  )}
+                </div>
+              )}
+
               <div className="space-y-1">
                 <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Prefixo</Label>
                 <Input
