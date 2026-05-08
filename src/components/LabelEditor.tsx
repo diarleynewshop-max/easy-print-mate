@@ -119,6 +119,7 @@ function normalizeTemplate(template: LabelTemplate): LabelTemplate {
     marginRightMm,
     marginTopMm,
     marginBottomMm,
+    paperWidthMm: template.paperWidthMm,
     fields: template.fields.map((field) => {
       const normalized: LabelField = {
         ...field,
@@ -352,11 +353,24 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
   };
 
   const cols = Math.max(1, current.columns || 1);
-  const sheetWidthMm =
+  const calculatedSheetWidthMm =
     cols * current.widthMm +
     (cols - 1) * (current.columnGapMm ?? 0) +
     (current.marginLeftMm ?? 0) +
     (current.marginRightMm ?? 0);
+  const sheetWidthMm = current.paperWidthMm && current.paperWidthMm > 0 ? current.paperWidthMm : calculatedSheetWidthMm;
+  const calculateGapForPaper = (paperWidthMm = sheetWidthMm) => {
+    if (cols <= 1) return 0;
+    const margins = (current.marginLeftMm ?? 0) + (current.marginRightMm ?? 0);
+    const labelWidth = cols * current.widthMm;
+    return Math.max(0, (paperWidthMm - margins - labelWidth) / (cols - 1));
+  };
+  const applyPaperWidth = (paperWidthMm = sheetWidthMm) => {
+    update({
+      paperWidthMm,
+      columnGapMm: Number(calculateGapForPaper(paperWidthMm).toFixed(2)),
+    });
+  };
 
   const sheetCells = useMemo(
     () => Array.from({ length: cols * sheetRows }),
@@ -587,6 +601,8 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                     <div
                       className="rounded-sm border-2 border-dashed border-primary/40 bg-white"
                       style={{
+                        width: `${sheetWidthMm}mm`,
+                        boxSizing: "border-box",
                         padding: `${current.marginTopMm ?? 0}mm ${current.marginRightMm ?? 0}mm ${current.marginBottomMm ?? 0}mm ${current.marginLeftMm ?? 0}mm`,
                       }}
                     >
@@ -664,7 +680,13 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                     <button
                       key={p.columns}
                       type="button"
-                      onClick={() => update({ columns: p.columns })}
+                      onClick={() => {
+                        const margins = (current.marginLeftMm ?? 0) + (current.marginRightMm ?? 0);
+                        const gap = p.columns > 1 && current.paperWidthMm
+                          ? Math.max(0, (current.paperWidthMm - margins - p.columns * current.widthMm) / (p.columns - 1))
+                          : current.columnGapMm;
+                        update({ columns: p.columns, columnGapMm: Number((gap ?? 0).toFixed(2)) });
+                      }}
                       className={cn(
                         "flex flex-col items-center gap-1 rounded-md border py-2 text-[10px] transition-colors hover:border-primary",
                         active ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"
@@ -685,8 +707,42 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                 value={current.columns || 1}
                 min={1}
                 max={8}
-                onChange={(value) => update({ columns: Math.max(1, value) })}
+                onChange={(value) => {
+                  const nextCols = Math.max(1, value);
+                  const margins = (current.marginLeftMm ?? 0) + (current.marginRightMm ?? 0);
+                  const gap = nextCols > 1 && current.paperWidthMm
+                    ? Math.max(0, (current.paperWidthMm - margins - nextCols * current.widthMm) / (nextCols - 1))
+                    : current.columnGapMm;
+                  update({ columns: nextCols, columnGapMm: Number((gap ?? 0).toFixed(2)) });
+                }}
               />
+            </div>
+
+            <div className="space-y-2 rounded-md border bg-background p-2">
+              <div className="grid grid-cols-2 gap-2">
+                <NumberControl
+                  label="Largura papel"
+                  suffix="mm"
+                  value={sheetWidthMm}
+                  min={1}
+                  step={0.5}
+                  onChange={(value) => applyPaperWidth(Math.max(1, value))}
+                />
+                <NumberControl
+                  label="Espaco calculado"
+                  suffix="mm"
+                  value={Number(calculateGapForPaper().toFixed(2))}
+                  min={0}
+                  step={0.5}
+                  onChange={(value) => update({ columnGapMm: Math.max(0, value), paperWidthMm: undefined })}
+                />
+              </div>
+              <Button type="button" size="sm" variant="outline" className="h-8 w-full text-xs" onClick={() => applyPaperWidth(sheetWidthMm)}>
+                Calcular espaco pela largura do papel
+              </Button>
+              <div className="text-[10px] leading-relaxed text-muted-foreground">
+                Conta: papel - margens - (colunas x etiqueta), dividido pelos vaos.
+              </div>
             </div>
 
             <div className="rounded-md bg-primary/5 px-2.5 py-1.5 text-[10px] leading-relaxed text-muted-foreground">

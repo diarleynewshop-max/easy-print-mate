@@ -52,6 +52,7 @@ export interface LabelTemplate {
   marginRightMm?: number;
   marginTopMm?: number;
   marginBottomMm?: number;
+  paperWidthMm?: number;
   columns?: number;
   columnGapMm?: number;
   rowGapMm?: number;

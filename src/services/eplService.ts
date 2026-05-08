@@ -73,7 +73,8 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
   const marginTopMm = template.marginTopMm ?? 0;
   const marginRightMm = template.marginRightMm ?? 0;
   const marginBottomMm = template.marginBottomMm ?? 0;
-  const pageWidthMm = columns * template.widthMm + Math.max(0, columns - 1) * columnGapMm + marginLeftMm + marginRightMm;
+  const calculatedPageWidthMm = columns * template.widthMm + Math.max(0, columns - 1) * columnGapMm + marginLeftMm + marginRightMm;
+  const pageWidthMm = template.paperWidthMm && template.paperWidthMm > 0 ? template.paperWidthMm : calculatedPageWidthMm;
   const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
   const pageWidthDots = mmToDots(pageWidthMm);
   const pageHeightDots = mmToDots(pageHeightMm);

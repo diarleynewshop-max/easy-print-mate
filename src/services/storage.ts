@@ -92,8 +92,9 @@ export const defaultTemplates = (): LabelTemplate[] => [
     marginRightMm: 0,
     marginTopMm: 0,
     marginBottomMm: 0,
+    paperWidthMm: 100,
     columns: 3,
-    columnGapMm: 9,
+    columnGapMm: 8,
     rowGapMm: 0,
     fontFamily: "Arial, sans-serif",
     fields: [
