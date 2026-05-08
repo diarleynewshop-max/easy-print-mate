@@ -1,0 +1,60 @@
+import { LabelTemplate } from "@/types/label";
+
+export const ELGIN_PRESET_ID = "elgin-l42pro-3col-28x14";
+
+export function elginPreset(): LabelTemplate {
+  return {
+    id: ELGIN_PRESET_ID,
+    name: "Elgin L42PRO 3 colunas 28x14",
+    widthMm: 28,
+    heightMm: 14,
+    marginMm: 0,
+    marginLeftMm: 0,
+    marginRightMm: 0,
+    marginTopMm: 0,
+    marginBottomMm: 0,
+    paperWidthMm: 100,
+    columns: 3,
+    columnGapMm: 8,
+    rowGapMm: 0,
+    safePaddingLeftMm: 2,
+    safePaddingRightMm: 2,
+    safePaddingTopMm: 1,
+    safePaddingBottomMm: 1,
+    fontFamily: "Arial, sans-serif",
+    fields: [
+      {
+        key: "descricao",
+        visible: true,
+        x: 2,
+        y: 1,
+        widthMm: 24,
+        heightMm: 3,
+        fontSize: 6,
+        bold: true,
+        align: "center",
+        descriptionMode: "first-word",
+      },
+      {
+        key: "barcode",
+        visible: true,
+        x: 2,
+        y: 5,
+        widthMm: 24,
+        heightMm: 8,
+        fontSize: 5,
+        align: "center",
+        barcodeFormat: "auto",
+        barcodeDisplayValue: true,
+        barcodeNarrow: 1,
+        barcodeWideRatio: 2,
+      },
+      { key: "codigoInterno", visible: false, x: 2, y: 1, widthMm: 8, heightMm: 3, fontSize: 5 },
+      { key: "precoVarejo", visible: false, x: 14, y: 1, widthMm: 12, heightMm: 3, fontSize: 6, bold: true, label: "" },
+      { key: "ean", visible: false, x: 2, y: 11, widthMm: 24, heightMm: 3, fontSize: 4, align: "center" },
+      { key: "precoAtacado", visible: false, x: 2, y: 11, widthMm: 20, heightMm: 3, fontSize: 4, label: "AT R$" },
+      { key: "secao", visible: false, x: 2, y: 11, widthMm: 20, heightMm: 3, fontSize: 4 },
+      { key: "estoque", visible: false, x: 20, y: 11, widthMm: 6, heightMm: 3, fontSize: 4 },
+    ],
+  };
+}
