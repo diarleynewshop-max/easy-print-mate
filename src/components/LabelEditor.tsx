@@ -5,7 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { LabelPreview } from "./LabelPreview";
-import { storage, defaultTemplates } from "@/services/storage";
+import { storage, defaultTemplates, restoreElginPreset } from "@/services/storage";
+import { ELGIN_PRESET_ID } from "@/services/presets";
+import { computeHorizontalSpacing, validateTemplate } from "@/services/labelValidation";
 import { toast } from "sonner";
 import {
   Barcode,
@@ -26,12 +28,14 @@ import {
   Plus,
   Ruler,
   Save,
-  
+  RotateCw,
+  ShieldCheck,
   Square,
   Tags,
   Trash2,
   Type,
   Upload,
+  Copy,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -120,6 +124,10 @@ function normalizeTemplate(template: LabelTemplate): LabelTemplate {
     marginTopMm,
     marginBottomMm,
     paperWidthMm: template.paperWidthMm,
+    safePaddingLeftMm: template.safePaddingLeftMm ?? 1,
+    safePaddingRightMm: template.safePaddingRightMm ?? 1,
+    safePaddingTopMm: template.safePaddingTopMm ?? 1,
+    safePaddingBottomMm: template.safePaddingBottomMm ?? 1,
     fields: template.fields.map((field) => {
       const normalized: LabelField = {
         ...field,
