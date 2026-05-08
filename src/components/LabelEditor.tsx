@@ -808,6 +808,33 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
             </div>
           </Section>
 
+          <Section icon={ShieldCheck} title="Área segura" defaultOpen={false}>
+            <div className="grid grid-cols-2 gap-2">
+              <NumberControl label="Esquerda" suffix="mm" value={current.safePaddingLeftMm ?? 0} min={0} step={0.5} onChange={(v) => update({ safePaddingLeftMm: Math.max(0, v) })} />
+              <NumberControl label="Direita" suffix="mm" value={current.safePaddingRightMm ?? 0} min={0} step={0.5} onChange={(v) => update({ safePaddingRightMm: Math.max(0, v) })} />
+              <NumberControl label="Topo" suffix="mm" value={current.safePaddingTopMm ?? 0} min={0} step={0.5} onChange={(v) => update({ safePaddingTopMm: Math.max(0, v) })} />
+              <NumberControl label="Base" suffix="mm" value={current.safePaddingBottomMm ?? 0} min={0} step={0.5} onChange={(v) => update({ safePaddingBottomMm: Math.max(0, v) })} />
+            </div>
+            {(() => {
+              const issues = validateTemplate(current);
+              if (issues.length === 0) return (
+                <div className="rounded-md bg-emerald-500/10 px-2 py-1.5 text-[10px] text-emerald-700">
+                  ✓ Todos os campos dentro da área segura.
+                </div>
+              );
+              return (
+                <div className="space-y-1 rounded-md bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-800">
+                  {issues.map((i, idx) => (
+                    <div key={idx}>• {i.message}</div>
+                  ))}
+                </div>
+              );
+            })()}
+            <div className="text-[10px] leading-relaxed text-muted-foreground">
+              Espaço calculado entre colunas: <strong className="text-foreground">{computeHorizontalSpacing(current).toFixed(2)} mm</strong>
+            </div>
+          </Section>
+
           {selected && (
             <Section icon={SelectedIcon} title={`Campo: ${FIELD_LABELS[selected.key]}`}>
               <div className="flex h-9 items-center justify-between rounded-md border bg-background px-3">
