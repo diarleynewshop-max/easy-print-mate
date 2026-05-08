@@ -1,23 +1,43 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
-import { storage, defaultTemplates, ensureDefaultTemplates } from "@/services/storage";
+import { storage, defaultTemplates, ensureDefaultTemplates, restoreElginPreset } from "@/services/storage";
+import { ELGIN_PRESET_ID } from "@/services/presets";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
-import { buildEplPrn, downloadEplPrn } from "@/services/eplService";
+import { buildEplPrn, buildTestPrn, buildCalibrationPrn, downloadEplPrn } from "@/services/eplService";
 import { printService } from "@/services/printService";
+import { validateTemplate, computeHorizontalSpacing } from "@/services/labelValidation";
+import { usePrintServerStatus } from "@/hooks/usePrintServerStatus";
 import { ProductSearch } from "@/components/ProductSearch";
 import { LabelPreview } from "@/components/LabelPreview";
 import { LabelEditor } from "@/components/LabelEditor";
 import { ApiConfig } from "@/components/ApiConfig";
 import { Metrics } from "@/components/Metrics";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Download, Printer, Tag, Settings, History, Pencil, Loader2, Trash2, BarChart3 } from "lucide-react";
+import {
+  Download,
+  Printer,
+  Tag,
+  Settings,
+  History,
+  Pencil,
+  Loader2,
+  Trash2,
+  BarChart3,
+  Wifi,
+  WifiOff,
+  Crosshair,
+  RotateCw,
+  TestTube2,
+  Plus,
+  Minus,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type View = "scan" | "editor" | "config" | "metrics";
-const DEFAULT_RAW_TEMPLATE_ID = "etiqueta-prn-3col-28x15";
 
 const Index = () => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -27,9 +47,14 @@ const Index = () => {
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorDebug, setErrorDebug] = useState<unknown>(null);
-  const [copies, setCopies] = useState(1);
+  const [copies, setCopies] = useState(3);
+  const [previewTab, setPreviewTab] = useState<"label" | "sheet">("label");
   const lastActionRef = useRef<number>(Date.now());
+  const lastPrintedRef = useRef<Product | null>(null);
   const [printEvents, setPrintEvents] = useState<PrintEvent[]>(() => storage.getPrintEvents());
+  const [scanState, setScanState] = useState<"idle" | "searching" | "found" | "error" | "sent" | "fail">("idle");
+
+  const printerStatus = usePrintServerStatus(8000);
 
   const [config, setConfig] = useState<VFConfig>(() => storage.getConfig());
   const [history, setHistory] = useState<HistoryEntry[]>(() => storage.getHistory());
@@ -39,22 +64,27 @@ const Index = () => {
     storage.saveTemplates(d);
     return d;
   });
-  const [activeTemplateId, setActiveTemplateId] = useState<string>(
-    () => {
-      const stored = storage.getActiveTemplateId();
-      const id = !stored || stored === "etiqueta-prn-102x21" ? DEFAULT_RAW_TEMPLATE_ID : stored;
-      storage.setActiveTemplateId(id);
-      return id;
-    },
-  );
+  const [activeTemplateId, setActiveTemplateId] = useState<string>(() => {
+    const stored = storage.getActiveTemplateId();
+    const id = !stored || stored === "etiqueta-prn-102x21" ? ELGIN_PRESET_ID : stored;
+    storage.setActiveTemplateId(id);
+    return id;
+  });
 
   const activeTemplate = useMemo(
     () => templates.find((t) => t.id === activeTemplateId) || templates[0],
     [templates, activeTemplateId],
   );
 
+  const issues = useMemo(() => validateTemplate(activeTemplate), [activeTemplate]);
+  const hasErrors = issues.some((i) => i.level === "error");
+  const hasWarnings = issues.some((i) => i.level === "warning");
+
+  const cols = Math.max(1, activeTemplate.columns || 1);
+  const horizontalSpacing = computeHorizontalSpacing(activeTemplate);
+
   useEffect(() => {
-    document.title = "Etiquetas — Varejo Fácil";
+    document.title = "Easy Print Mate — Elgin L42PRO";
   }, []);
 
   const focusInput = () => setTimeout(() => inputRef.current?.focus(), 50);
@@ -63,12 +93,14 @@ const Index = () => {
     const ean = (rawCode ?? code).trim();
     if (!ean) return;
     setLoading(true);
+    setScanState("searching");
     setError(null);
     setErrorDebug(null);
     setProduct(null);
     try {
       const p = await fetchProductByEan(config, ean);
       setProduct(p);
+      setScanState("found");
       const entry: HistoryEntry = { ean: p.ean, descricao: p.descricao, at: Date.now() };
       storage.pushHistory(entry);
       setHistory(storage.getHistory());
@@ -76,6 +108,7 @@ const Index = () => {
       const msg = e instanceof VFError ? e.message : "Erro inesperado";
       setErrorDebug(e instanceof VFError ? e.debug : null);
       setError(msg);
+      setScanState("error");
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -83,30 +116,66 @@ const Index = () => {
     }
   };
 
-  const handlePrint = async () => {
-    if (!product) return toast.error("Nenhum produto selecionado");
+  const recordEvent = (p: Product, qty: number, status: "success" | "error") => {
     const now = Date.now();
     const evt: PrintEvent = {
-      ean: product.ean,
-      descricao: product.descricao,
-      quantidade: copies,
+      ean: p.ean,
+      descricao: p.descricao,
+      quantidade: qty,
       templateId: activeTemplateId,
       at: now,
       durationMs: now - lastActionRef.current,
+      status,
     };
     storage.pushPrintEvent(evt);
     setPrintEvents(storage.getPrintEvents());
     lastActionRef.current = now;
+  };
+
+  const sendRaw = async (content: string, label: string) => {
     try {
-      await printService.printRawPrn(buildEplPrn(activeTemplate, product, copies));
-      toast.success("Enviado para ELGIN L42PRO FULL");
+      await printService.printRawPrn(content);
+      toast.success(`${label} enviado para ELGIN L42PRO FULL`);
+      setScanState("sent");
+      return true;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao imprimir");
+      setScanState("fail");
+      return false;
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!product) return toast.error("Nenhum produto selecionado");
+    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
+    if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
+    const ok = await sendRaw(buildEplPrn(activeTemplate, product, copies), `${copies} etiqueta(s)`);
+    recordEvent(product, copies, ok ? "success" : "error");
+    if (ok) {
+      lastPrintedRef.current = product;
       setTimeout(() => {
         setCode("");
         focusInput();
       }, 300);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao imprimir");
     }
+  };
+
+  const handleReprintLast = async () => {
+    const p = lastPrintedRef.current;
+    if (!p) return toast.error("Nenhuma impressão anterior");
+    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
+    const ok = await sendRaw(buildEplPrn(activeTemplate, p, copies), "Reimpressão");
+    recordEvent(p, copies, ok ? "success" : "error");
+  };
+
+  const handleTestPrint = async () => {
+    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
+    await sendRaw(buildTestPrn(activeTemplate), "Etiqueta de teste");
+  };
+
+  const handleCalibration = async () => {
+    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
+    await sendRaw(buildCalibrationPrn(activeTemplate), "Calibração");
   };
 
   const handleDownloadPrn = () => {
@@ -115,21 +184,32 @@ const Index = () => {
     toast.success("PRN EPL gerado");
   };
 
+  const handleRestoreElgin = () => {
+    const next = restoreElginPreset(templates);
+    setTemplates(next);
+    storage.saveTemplates(next);
+    setActiveTemplateId(ELGIN_PRESET_ID);
+    storage.setActiveTemplateId(ELGIN_PRESET_ID);
+    toast.success("Preset Elgin restaurado");
+  };
+
   const reuseFromHistory = (ean: string) => {
     setCode(ean);
     setView("scan");
     search(ean);
   };
 
+  const lastEvent = printEvents[0];
+  const printDisabled = !product || printerStatus !== "online" || hasErrors || copies < 1;
+
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      {/* Sidebar */}
-      <aside className="no-print w-64 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
+      <aside className="no-print w-60 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
         <div className="p-4 border-b border-sidebar-border flex items-center gap-2">
           <Tag className="h-5 w-5 text-sidebar-primary" />
           <div>
-            <h1 className="font-bold leading-tight">Etiquetas</h1>
-            <p className="text-xs opacity-70">Varejo Fácil · Elgin L42</p>
+            <h1 className="font-bold leading-tight text-sm">Easy Print Mate</h1>
+            <p className="text-[11px] opacity-70">Elgin L42PRO · EPL RAW</p>
           </div>
         </div>
 
@@ -140,36 +220,32 @@ const Index = () => {
           <NavBtn icon={<Settings />} label="Configuração API" active={view === "config"} onClick={() => setView("config")} />
         </nav>
 
-        <div className="px-3 mt-2 flex items-center justify-between text-xs uppercase opacity-60">
+        <div className="px-3 mt-2 flex items-center justify-between text-[10px] uppercase opacity-60">
           <span className="flex items-center gap-1"><History className="h-3 w-3" /> Histórico</span>
           {history.length > 0 && (
-            <button
-              className="hover:text-sidebar-primary"
-              onClick={() => { storage.clearHistory(); setHistory([]); }}
-              title="Limpar"
-            >
+            <button className="hover:text-sidebar-primary" onClick={() => { storage.clearHistory(); setHistory([]); }}>
               <Trash2 className="h-3 w-3" />
             </button>
           )}
         </div>
         <div className="flex-1 overflow-auto px-2 py-2 space-y-1">
-          {history.length === 0 && <p className="text-xs opacity-50 px-2">Nenhum produto ainda.</p>}
+          {history.length === 0 && <p className="text-[11px] opacity-50 px-2">Nenhum produto ainda.</p>}
           {history.map((h) => (
             <button
               key={h.ean + h.at}
               onClick={() => reuseFromHistory(h.ean)}
               className="w-full text-left p-2 rounded hover:bg-sidebar-accent transition-colors"
             >
-              <div className="text-xs font-mono opacity-70">{h.ean}</div>
-              <div className="text-sm truncate">{h.descricao}</div>
+              <div className="text-[10px] font-mono opacity-70">{h.ean}</div>
+              <div className="text-xs truncate">{h.descricao}</div>
             </button>
           ))}
         </div>
 
-        <div className="p-3 border-t border-sidebar-border text-xs opacity-60">
-          Modelo ativo:
+        <div className="p-3 border-t border-sidebar-border text-[11px] opacity-80 space-y-2">
+          <div className="opacity-70">Modelo ativo:</div>
           <select
-            className="mt-1 w-full bg-sidebar-accent text-sidebar-accent-foreground rounded px-2 py-1 text-xs"
+            className="w-full bg-sidebar-accent text-sidebar-accent-foreground rounded px-2 py-1 text-xs"
             value={activeTemplateId}
             onChange={(e) => { setActiveTemplateId(e.target.value); storage.setActiveTemplateId(e.target.value); }}
           >
@@ -177,14 +253,42 @@ const Index = () => {
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
+          <Button size="sm" variant="outline" className="h-7 w-full text-[11px]" onClick={handleRestoreElgin}>
+            <RotateCw className="h-3 w-3" /> Restaurar Elgin
+          </Button>
         </div>
       </aside>
 
-      {/* Main */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Top status bar */}
+        <div className="no-print flex shrink-0 items-center gap-3 border-b bg-card px-4 py-2 text-xs">
+          <StatusBadge
+            online={printerStatus === "online"}
+            checking={printerStatus === "checking"}
+            label={printerStatus === "online" ? "Servidor de impressão online" : printerStatus === "checking" ? "Verificando servidor..." : "Servidor offline"}
+            iconOk={<Wifi className="h-3.5 w-3.5" />}
+            iconFail={<WifiOff className="h-3.5 w-3.5" />}
+          />
+          <div className="flex items-center gap-1.5 rounded-md border bg-background px-2 py-1">
+            <Printer className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-mono">ELGIN L42PRO FULL</span>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-md border bg-background px-2 py-1">
+            <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>{activeTemplate.name}</span>
+            <span className="text-muted-foreground">· {activeTemplate.widthMm}×{activeTemplate.heightMm}mm</span>
+          </div>
+          {lastEvent && (
+            <div className="ml-auto flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-muted-foreground">
+              Última: <span className="font-mono text-foreground">{lastEvent.ean}</span>
+              · {lastEvent.quantidade}x · {new Date(lastEvent.at).toLocaleTimeString()}
+            </div>
+          )}
+        </div>
+
         {view === "scan" && (
-          <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4 p-6 overflow-auto no-print">
-            <section className="space-y-6">
+          <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4 p-4 overflow-auto no-print">
+            <section className="space-y-4">
               <ProductSearch
                 ref={inputRef}
                 value={code}
@@ -192,58 +296,130 @@ const Index = () => {
                 onSubmit={() => search()}
                 loading={loading}
               />
-              <div className="rounded-lg border bg-card p-6 min-h-[280px] flex items-center justify-center">
-                {loading && <Loader2 className="h-10 w-10 animate-spin text-primary" />}
+
+              <ScanStateBar state={scanState} loading={loading} />
+
+              <div className="rounded-lg border bg-card p-4">
+                <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Tag className="h-4 w-4 text-primary" /> Produto
+                </h2>
+                {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Buscando...</div>}
                 {!loading && error && (
-                  <div className="w-full max-w-3xl space-y-3">
-                    <div className="text-destructive font-medium">{error}</div>
+                  <div className="space-y-2">
+                    <div className="text-destructive text-sm font-medium">{error}</div>
                     {errorDebug ? (
-                      <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs text-muted-foreground whitespace-pre-wrap">
+                      <pre className="max-h-40 overflow-auto rounded-md bg-muted p-2 text-[10px] text-muted-foreground whitespace-pre-wrap">
                         {JSON.stringify(errorDebug, null, 2)}
                       </pre>
                     ) : null}
                   </div>
                 )}
-                {!loading && !error && (
-                  <LabelPreview template={activeTemplate} product={product} />
-                )}
-              </div>
-            </section>
-
-            <aside className="space-y-4">
-              <div className="rounded-lg border bg-card p-4">
-                <h2 className="font-semibold mb-3">Dados do produto</h2>
-                {product ? (
-                  <dl className="space-y-2 text-sm">
+                {!loading && !error && product && (
+                  <div className="grid grid-cols-2 gap-2 text-sm">
                     <Row label="EAN" value={product.ean} mono />
-                    <Row label="Descrição" value={product.descricao} />
                     <Row label="Cód. interno" value={product.codigoInterno} mono />
+                    <Row label="Descrição" value={product.descricao} full />
                     <Row label="Seção" value={product.secao || product.grupo} />
+                    <Row label="Estoque" value={product.estoque?.toString()} />
                     <Row label="Preço varejo" value={product.precoVarejo != null ? `R$ ${product.precoVarejo.toFixed(2)}` : undefined} bold />
                     <Row label="Preço atacado" value={product.precoAtacado != null ? `R$ ${product.precoAtacado.toFixed(2)}` : undefined} />
-                    <Row label="Estoque" value={product.estoque?.toString()} />
-                  </dl>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Bipe um código para começar.</p>
+                  </div>
+                )}
+                {!loading && !error && !product && (
+                  <p className="text-sm text-muted-foreground">Bipe um código de barras para começar.</p>
                 )}
               </div>
 
-              <div className="rounded-lg border bg-card p-4 space-y-3">
-                <div>
-                  <Label>Quantidade de etiquetas</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={copies}
-                    onChange={(e) => setCopies(Math.max(1, +e.target.value || 1))}
-                  />
+              {(hasErrors || hasWarnings) && (
+                <div className={cn(
+                  "rounded-lg border p-3 text-xs space-y-1",
+                  hasErrors ? "border-destructive/40 bg-destructive/5 text-destructive" : "border-amber-500/40 bg-amber-50 text-amber-900",
+                )}>
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    {hasErrors ? "Modelo com erros" : "Avisos no modelo"}
+                  </div>
+                  {issues.map((i, idx) => (
+                    <div key={idx} className="opacity-90">• {i.message}</div>
+                  ))}
                 </div>
-                <Button onClick={handlePrint} disabled={!product} className="w-full h-12 text-base">
-                  <Printer /> Imprimir PRN {copies > 1 ? `(${copies})` : ""}
+              )}
+            </section>
+
+            <aside className="space-y-3">
+              <div className="rounded-lg border bg-card p-3">
+                <Tabs value={previewTab} onValueChange={(v) => setPreviewTab(v as "label" | "sheet")}>
+                  <TabsList className="grid grid-cols-2 h-8">
+                    <TabsTrigger value="label" className="text-xs">Etiqueta</TabsTrigger>
+                    <TabsTrigger value="sheet" className="text-xs">Folha ({cols} col)</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="label" className="mt-3">
+                    <div className="flex justify-center rounded-md bg-muted/40 p-3">
+                      <LabelPreview template={activeTemplate} product={product} />
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="sheet" className="mt-3">
+                    <SheetPreviewMini template={activeTemplate} product={product} copies={copies} />
+                  </TabsContent>
+                </Tabs>
+
+                <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>Espaço entre col.: <strong className="text-foreground">{horizontalSpacing.toFixed(1)} mm</strong></span>
+                  <span>Folha: <strong className="text-foreground">{(activeTemplate.paperWidthMm ?? 0).toFixed(0)} mm</strong></span>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-card p-3 space-y-3">
+                <div>
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+                    Quantidade ({cols} col → múltiplos de {cols})
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setCopies((c) => Math.max(1, c - 1))}>
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <div className="flex-1 text-center text-2xl font-bold tabular-nums">{copies}</div>
+                    <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setCopies((c) => c + 1)}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    {[3, 6, 9].map((n) => (
+                      <Button
+                        key={n}
+                        variant={copies === n ? "default" : "outline"}
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => setCopies(n)}
+                      >
+                        {n} et.
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handlePrint}
+                  disabled={printDisabled}
+                  className="w-full h-12 text-base"
+                >
+                  <Printer /> Imprimir {copies} etiqueta{copies > 1 ? "s" : ""}
                 </Button>
-                <Button onClick={handleDownloadPrn} disabled={!product} variant="outline" className="w-full h-10">
-                  <Download /> Baixar PRN
-                </Button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button onClick={handleReprintLast} variant="outline" size="sm" className="h-9 text-xs" disabled={!lastPrintedRef.current || printerStatus !== "online"}>
+                    <RotateCw className="h-3.5 w-3.5" /> Reimprimir último
+                  </Button>
+                  <Button onClick={handleDownloadPrn} variant="outline" size="sm" className="h-9 text-xs" disabled={!product}>
+                    <Download className="h-3.5 w-3.5" /> Baixar PRN
+                  </Button>
+                  <Button onClick={handleTestPrint} variant="outline" size="sm" className="h-9 text-xs" disabled={printerStatus !== "online"}>
+                    <TestTube2 className="h-3.5 w-3.5" /> Testar impressão
+                  </Button>
+                  <Button onClick={handleCalibration} variant="outline" size="sm" className="h-9 text-xs" disabled={printerStatus !== "online"}>
+                    <Crosshair className="h-3.5 w-3.5" /> Calibração
+                  </Button>
+                </div>
               </div>
             </aside>
           </div>
@@ -275,11 +451,6 @@ const Index = () => {
           </div>
         )}
       </main>
-
-      {/* Print area (hidden on screen) */}
-      <div className="hidden print:block">
-        <LabelPreview template={activeTemplate} product={product} forPrint copies={copies} />
-      </div>
     </div>
   );
 };
@@ -299,11 +470,90 @@ function NavBtn({ icon, label, active, onClick }: { icon: React.ReactNode; label
   );
 }
 
-function Row({ label, value, mono, bold }: { label: string; value?: string; mono?: boolean; bold?: boolean }) {
+function StatusBadge({ online, checking, label, iconOk, iconFail }: { online: boolean; checking: boolean; label: string; iconOk: React.ReactNode; iconFail: React.ReactNode }) {
   return (
-    <div className="flex justify-between gap-3 border-b last:border-0 pb-1">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={cn("text-right truncate", mono && "font-mono", bold && "font-bold text-base")}>{value || "—"}</dd>
+    <div
+      className={cn(
+        "flex items-center gap-1.5 rounded-md border px-2 py-1",
+        checking ? "border-muted bg-muted/40 text-muted-foreground" : online ? "border-emerald-500/40 bg-emerald-50 text-emerald-700" : "border-destructive/40 bg-destructive/5 text-destructive",
+      )}
+    >
+      {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : online ? iconOk : iconFail}
+      <span className="font-medium">{label}</span>
+    </div>
+  );
+}
+
+function ScanStateBar({ state, loading }: { state: string; loading: boolean }) {
+  const map: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+    idle: { label: "Aguardando bipagem", cls: "border-muted bg-muted/40 text-muted-foreground", icon: <Tag className="h-3.5 w-3.5" /> },
+    searching: { label: "Buscando produto...", cls: "border-blue-500/40 bg-blue-50 text-blue-700", icon: <Loader2 className="h-3.5 w-3.5 animate-spin" /> },
+    found: { label: "Produto encontrado", cls: "border-emerald-500/40 bg-emerald-50 text-emerald-700", icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+    error: { label: "Erro ao buscar produto", cls: "border-destructive/40 bg-destructive/5 text-destructive", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+    sent: { label: "Enviado para impressora", cls: "border-emerald-500/40 bg-emerald-50 text-emerald-700", icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+    fail: { label: "Falha ao imprimir", cls: "border-destructive/40 bg-destructive/5 text-destructive", icon: <AlertTriangle className="h-3.5 w-3.5" /> },
+  };
+  const s = loading ? map.searching : map[state] || map.idle;
+  return (
+    <div className={cn("flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium", s.cls)}>
+      {s.icon}
+      {s.label}
+    </div>
+  );
+}
+
+function SheetPreviewMini({ template, product, copies }: { template: LabelTemplate; product: Product | null; copies: number }) {
+  const cols = Math.max(1, template.columns || 1);
+  const rows = Math.max(1, Math.ceil(copies / cols));
+  const cells = Array.from({ length: rows * cols });
+  const paperWidth = template.paperWidthMm ?? cols * template.widthMm;
+  // Scale to fit container width (~360px)
+  const targetPx = 340;
+  const scale = Math.min(2.5, targetPx / (paperWidth * 3.78));
+
+  return (
+    <div className="space-y-2">
+      <div className="overflow-auto rounded-md bg-muted/30 p-3">
+        <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", display: "inline-block" }}>
+          <div
+            className="bg-white border border-dashed border-primary/40"
+            style={{
+              width: `${paperWidth}mm`,
+              padding: `${template.marginTopMm ?? 0}mm ${template.marginRightMm ?? 0}mm ${template.marginBottomMm ?? 0}mm ${template.marginLeftMm ?? 0}mm`,
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${cols}, ${template.widthMm}mm)`,
+                columnGap: `${template.columnGapMm ?? 0}mm`,
+                rowGap: `${template.rowGapMm ?? 0}mm`,
+              }}
+            >
+              {cells.map((_, i) => (
+                <div key={i} style={{ width: `${template.widthMm}mm`, height: `${template.heightMm}mm` }}>
+                  <LabelPreview template={template} product={product} />
+                </div>
+              ))}
+            </div>
+            {/* Cut line */}
+            <div className="border-t border-dashed border-destructive/60 mt-1" />
+          </div>
+        </div>
+      </div>
+      <p className="text-[10px] text-muted-foreground text-center">
+        {rows} carreira{rows > 1 ? "s" : ""} × {cols} coluna{cols > 1 ? "s" : ""} = {rows * cols} etiquetas (qtd: {copies})
+      </p>
+    </div>
+  );
+}
+
+function Row({ label, value, mono, bold, full }: { label: string; value?: string; mono?: boolean; bold?: boolean; full?: boolean }) {
+  return (
+    <div className={cn("flex flex-col gap-0.5 border-b last:border-0 pb-1.5", full && "col-span-2")}>
+      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className={cn("truncate", mono && "font-mono text-xs", bold && "font-bold text-base")}>{value || "—"}</dd>
     </div>
   );
 }

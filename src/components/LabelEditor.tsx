@@ -5,7 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { LabelPreview } from "./LabelPreview";
-import { storage, defaultTemplates } from "@/services/storage";
+import { storage, defaultTemplates, restoreElginPreset } from "@/services/storage";
+import { ELGIN_PRESET_ID } from "@/services/presets";
+import { computeHorizontalSpacing, validateTemplate } from "@/services/labelValidation";
 import { toast } from "sonner";
 import {
   Barcode,
@@ -26,12 +28,14 @@ import {
   Plus,
   Ruler,
   Save,
-  
+  RotateCw,
+  ShieldCheck,
   Square,
   Tags,
   Trash2,
   Type,
   Upload,
+  Copy,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -120,6 +124,10 @@ function normalizeTemplate(template: LabelTemplate): LabelTemplate {
     marginTopMm,
     marginBottomMm,
     paperWidthMm: template.paperWidthMm,
+    safePaddingLeftMm: template.safePaddingLeftMm ?? 1,
+    safePaddingRightMm: template.safePaddingRightMm ?? 1,
+    safePaddingTopMm: template.safePaddingTopMm ?? 1,
+    safePaddingBottomMm: template.safePaddingBottomMm ?? 1,
     fields: template.fields.map((field) => {
       const normalized: LabelField = {
         ...field,
@@ -413,6 +421,23 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
           </select>
           <Button size="sm" variant="outline" className="h-8" onClick={newTemplate}>
             <Plus /> Novo
+          </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => {
+            const id = `tpl-${Date.now()}`;
+            const dup = normalizeTemplate({ ...current, id, name: `${current.name} (cópia)` });
+            setLocal([...local, dup]);
+            setCurrentId(id);
+            toast.success("Modelo duplicado");
+          }}>
+            <Copy /> Duplicar
+          </Button>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => {
+            const next = restoreElginPreset(local);
+            setLocal(next);
+            setCurrentId(ELGIN_PRESET_ID);
+            toast.success("Preset Elgin restaurado");
+          }}>
+            <RotateCw /> Preset Elgin
           </Button>
           <Button size="sm" variant="outline" className="h-8" onClick={remove}>
             <Trash2 /> Excluir
@@ -783,6 +808,33 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
             </div>
           </Section>
 
+          <Section icon={ShieldCheck} title="Área segura" defaultOpen={false}>
+            <div className="grid grid-cols-2 gap-2">
+              <NumberControl label="Esquerda" suffix="mm" value={current.safePaddingLeftMm ?? 0} min={0} step={0.5} onChange={(v) => update({ safePaddingLeftMm: Math.max(0, v) })} />
+              <NumberControl label="Direita" suffix="mm" value={current.safePaddingRightMm ?? 0} min={0} step={0.5} onChange={(v) => update({ safePaddingRightMm: Math.max(0, v) })} />
+              <NumberControl label="Topo" suffix="mm" value={current.safePaddingTopMm ?? 0} min={0} step={0.5} onChange={(v) => update({ safePaddingTopMm: Math.max(0, v) })} />
+              <NumberControl label="Base" suffix="mm" value={current.safePaddingBottomMm ?? 0} min={0} step={0.5} onChange={(v) => update({ safePaddingBottomMm: Math.max(0, v) })} />
+            </div>
+            {(() => {
+              const issues = validateTemplate(current);
+              if (issues.length === 0) return (
+                <div className="rounded-md bg-emerald-500/10 px-2 py-1.5 text-[10px] text-emerald-700">
+                  ✓ Todos os campos dentro da área segura.
+                </div>
+              );
+              return (
+                <div className="space-y-1 rounded-md bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-800">
+                  {issues.map((i, idx) => (
+                    <div key={idx}>• {i.message}</div>
+                  ))}
+                </div>
+              );
+            })()}
+            <div className="text-[10px] leading-relaxed text-muted-foreground">
+              Espaço calculado entre colunas: <strong className="text-foreground">{computeHorizontalSpacing(current).toFixed(2)} mm</strong>
+            </div>
+          </Section>
+
           {selected && (
             <Section icon={SelectedIcon} title={`Campo: ${FIELD_LABELS[selected.key]}`}>
               <div className="flex h-9 items-center justify-between rounded-md border bg-background px-3">
@@ -886,6 +938,31 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                       onChange={(value) => updateField(selected.key, { barcodeBarWidth: value })}
                     />
                   </div>
+                </div>
+              )}
+
+              {selected.key === "descricao" && (
+                <div className="space-y-2 rounded-md border bg-background p-2">
+                  <SelectControl
+                    label="Conteúdo do texto"
+                    value={selected.descriptionMode || "first-word"}
+                    options={[
+                      { value: "first-word", label: "Primeira palavra" },
+                      { value: "first-two-words", label: "Primeiras 2 palavras" },
+                      { value: "internal-code", label: "Código interno" },
+                      { value: "full", label: "Descrição completa" },
+                      { value: "custom", label: "Texto customizado" },
+                    ]}
+                    onChange={(value) => updateField(selected.key, { descriptionMode: value as never })}
+                  />
+                  {selected.descriptionMode === "custom" && (
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="Texto fixo a imprimir"
+                      value={selected.customText || ""}
+                      onChange={(e) => updateField(selected.key, { customText: e.target.value })}
+                    />
+                  )}
                 </div>
               )}
 

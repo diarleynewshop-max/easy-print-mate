@@ -20,15 +20,28 @@ function formatBRL(v?: number) {
   return v.toFixed(2).replace(".", ",");
 }
 
-function limitDescricao(value: string) {
-  const trimmed = value.trim();
-  return trimmed.length > 20 ? `${trimmed.slice(0, 20)}` : trimmed;
+function applyDescriptionMode(field: LabelField | undefined, descricao: string, codigoInterno?: string) {
+  const mode = field?.descriptionMode ?? "full";
+  const tokens = descricao.trim().split(/\s+/).filter(Boolean);
+  switch (mode) {
+    case "first-word":
+      return tokens[0] || "";
+    case "first-two-words":
+      return tokens.slice(0, 2).join(" ");
+    case "internal-code":
+      return codigoInterno || tokens[0] || "";
+    case "custom":
+      return field?.customText || "";
+    case "full":
+    default:
+      return descricao.trim().length > 28 ? descricao.trim().slice(0, 28) : descricao.trim();
+  }
 }
 
-function getValue(key: string, p: Product | null): string {
+function getValue(key: string, p: Product | null, field?: LabelField): string {
   if (!p) {
     const samples: Record<string, string> = {
-      descricao: "Produto Exemplo",
+      descricao: applyDescriptionMode(field, "PRD-001 PRODUTO EXEMPLO", "PRD-001"),
       precoVarejo: "9,90",
       precoAtacado: "8,50",
       ean: "7891234567890",
@@ -41,7 +54,7 @@ function getValue(key: string, p: Product | null): string {
 
   switch (key) {
     case "descricao":
-      return limitDescricao(p.descricao);
+      return applyDescriptionMode(field, p.descricao, p.codigoInterno);
     case "precoVarejo":
       return formatBRL(p.precoVarejo);
     case "precoAtacado":
@@ -270,7 +283,7 @@ function SingleLabel({
                   }}
                 >
                   {f.label ? `${f.label} ` : ""}
-                  {getValue(f.key, product)}
+                  {getValue(f.key, product, f)}
                 </div>
               )}
 
