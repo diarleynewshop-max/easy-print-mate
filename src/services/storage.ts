@@ -113,10 +113,10 @@ export const defaultTemplates = (): LabelTemplate[] => [
     safePaddingBottomMm: 1,
     fontFamily: "Arial, sans-serif",
     fields: [
-      { key: "descricao", visible: true, x: 1, y: 1, widthMm: 26, heightMm: 3, fontSize: 4, bold: true, descriptionMode: "first-word" },
-      { key: "barcode", visible: true, x: 1, y: 5.5, widthMm: 26, heightMm: 5.5, fontSize: 5 },
+      { key: "descricao", visible: true, x: 1.5, y: 1, widthMm: 10, heightMm: 3, fontSize: 4, bold: true, descriptionMode: "first-word" },
+      { key: "barcode", visible: true, x: 1.5, y: 5.5, widthMm: 25, heightMm: 5, fontSize: 5, barcodeBarWidth: 2, barcodeNarrow: 2, barcodeWideRatio: 3, barcodeDisplayValue: false },
       { key: "codigoInterno", visible: false, x: 1, y: 1, widthMm: 6, heightMm: 3, fontSize: 4 },
-      { key: "precoVarejo", visible: false, x: 20, y: 1, widthMm: 8, heightMm: 3, fontSize: 4, bold: true, label: "" },
+      { key: "precoVarejo", visible: true, x: 13, y: 1, widthMm: 12, heightMm: 3, fontSize: 4, bold: true, label: "R$" },
       { key: "ean", visible: false, x: 1, y: 11, widthMm: 26, heightMm: 3, fontSize: 4 },
       { key: "precoAtacado", visible: false, x: 1, y: 11, widthMm: 20, heightMm: 3, fontSize: 4, label: "AT R$" },
       { key: "secao", visible: false, x: 1, y: 11, widthMm: 20, heightMm: 3, fontSize: 4 },

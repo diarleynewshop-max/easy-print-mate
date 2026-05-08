@@ -78,6 +78,7 @@ function safeWidthMm(template: LabelTemplate) {
 // Auto narrow: try to fit barcode within available width
 function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: string) {
   if (field.barcodeNarrow && field.barcodeNarrow > 0) return field.barcodeNarrow;
+  if (field.barcodeBarWidth && field.barcodeBarWidth > 0) return Math.round(field.barcodeBarWidth);
   const availableMm = field.widthMm ?? safeWidthMm(template);
   const availableDots = mmToDots(availableMm);
   const len = payload.length || 13;
