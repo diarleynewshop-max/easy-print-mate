@@ -66,10 +66,8 @@ const Index = () => {
     return d;
   });
   const [activeTemplateId, setActiveTemplateId] = useState<string>(() => {
-    const stored = storage.getActiveTemplateId();
-    const id = !stored || stored === "etiqueta-prn-102x21" ? ELGIN_PRESET_ID : stored;
-    storage.setActiveTemplateId(id);
-    return id;
+    storage.setActiveTemplateId(ELGIN_PRESET_ID);
+    return ELGIN_PRESET_ID;
   });
 
   const activeTemplate = useMemo(
