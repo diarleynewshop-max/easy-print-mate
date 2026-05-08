@@ -79,6 +79,31 @@ export function ensureDefaultTemplates(templates: LabelTemplate[]) {
 
 export const defaultTemplates = (): LabelTemplate[] => [
   {
+    id: "etiqueta-prn-3col-28x15",
+    name: "PRN 3 COLUNAS 28x15",
+    widthMm: 28,
+    heightMm: 15,
+    marginMm: 0,
+    marginLeftMm: 0,
+    marginRightMm: 0,
+    marginTopMm: 0,
+    marginBottomMm: 0,
+    columns: 3,
+    columnGapMm: 9,
+    rowGapMm: 0,
+    fontFamily: "Arial, sans-serif",
+    fields: [
+      { key: "barcode", visible: true, x: 1, y: 1, widthMm: 26, heightMm: 5, fontSize: 5 },
+      { key: "codigoInterno", visible: true, x: 1, y: 7, widthMm: 6, heightMm: 3, fontSize: 4 },
+      { key: "descricao", visible: true, x: 7, y: 7, widthMm: 14, heightMm: 3, fontSize: 4, bold: true },
+      { key: "precoVarejo", visible: true, x: 21, y: 7, widthMm: 7, heightMm: 3, fontSize: 4, bold: true, label: "" },
+      { key: "ean", visible: false, x: 1, y: 11, widthMm: 26, heightMm: 3, fontSize: 4 },
+      { key: "precoAtacado", visible: false, x: 1, y: 11, widthMm: 20, heightMm: 3, fontSize: 4, label: "AT R$" },
+      { key: "secao", visible: false, x: 1, y: 11, widthMm: 20, heightMm: 3, fontSize: 4 },
+      { key: "estoque", visible: false, x: 21, y: 11, widthMm: 7, heightMm: 3, fontSize: 4 },
+    ],
+  },
+  {
     id: "etiqueta-prn-102x21",
     name: "PRN 102x21 - PADRAO",
     widthMm: 102,

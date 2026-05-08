@@ -17,6 +17,7 @@ import { Download, Printer, Tag, Settings, History, Pencil, Loader2, Trash2, Bar
 import { cn } from "@/lib/utils";
 
 type View = "scan" | "editor" | "config" | "metrics";
+const DEFAULT_RAW_TEMPLATE_ID = "etiqueta-prn-3col-28x15";
 
 const Index = () => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,7 +41,8 @@ const Index = () => {
   });
   const [activeTemplateId, setActiveTemplateId] = useState<string>(
     () => {
-      const id = "etiqueta-prn-102x21";
+      const stored = storage.getActiveTemplateId();
+      const id = !stored || stored === "etiqueta-prn-102x21" ? DEFAULT_RAW_TEMPLATE_ID : stored;
       storage.setActiveTemplateId(id);
       return id;
     },
