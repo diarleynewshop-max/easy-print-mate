@@ -283,7 +283,7 @@ function SingleLabel({
                   }}
                 >
                   {f.label ? `${f.label} ` : ""}
-                  {getValue(f.key, product)}
+                  {getValue(f.key, product, f)}
                 </div>
               )}
 
