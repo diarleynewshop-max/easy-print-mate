@@ -88,10 +88,8 @@ function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: 
   return Math.min(narrow, 4);
 }
 
-function eplBarcodeType(field: LabelField, payload: string) {
-  const format = field.barcodeFormat || "auto";
-  if (format === "CODE128") return "1";
-  if (format === "auto" && !/^\d+$/.test(payload)) return "1";
+function eplBarcodeType(_field: LabelField, payload: string) {
+  if (!/^\d+$/.test(payload)) return "1";
   return "E30";
 }
 
