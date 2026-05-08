@@ -74,15 +74,25 @@ export const storage = {
 export function ensureDefaultTemplates(templates: LabelTemplate[]) {
   const defaults = defaultTemplates();
   const defaultsById = new Map(defaults.map((template) => [template.id, template]));
-  const merged = templates.map((template) =>
-    template.id === "etiqueta-prn-3col-28x15" ? defaultsById.get(template.id) || template : template,
-  );
+  const merged = templates.map((template) => {
+    if (template.id === ELGIN_PRESET_ID) return defaultsById.get(template.id) || template;
+    if (template.id === "etiqueta-prn-3col-28x15") return defaultsById.get(template.id) || template;
+    return template;
+  });
   const existingIds = new Set(merged.map((template) => template.id));
   const missingDefaults = defaults.filter((template) => !existingIds.has(template.id));
   return [...missingDefaults, ...merged];
 }
 
+export function restoreElginPreset(templates: LabelTemplate[]): LabelTemplate[] {
+  const fresh = elginPreset();
+  const exists = templates.some((t) => t.id === fresh.id);
+  if (exists) return templates.map((t) => (t.id === fresh.id ? fresh : t));
+  return [fresh, ...templates];
+}
+
 export const defaultTemplates = (): LabelTemplate[] => [
+  elginPreset(),
   {
     id: "etiqueta-prn-3col-28x15",
     name: "PRN 3 COLUNAS 28x14",
@@ -97,9 +107,13 @@ export const defaultTemplates = (): LabelTemplate[] => [
     columns: 3,
     columnGapMm: 8,
     rowGapMm: 0,
+    safePaddingLeftMm: 2,
+    safePaddingRightMm: 2,
+    safePaddingTopMm: 1,
+    safePaddingBottomMm: 1,
     fontFamily: "Arial, sans-serif",
     fields: [
-      { key: "descricao", visible: true, x: 1, y: 1, widthMm: 26, heightMm: 3, fontSize: 4, bold: true },
+      { key: "descricao", visible: true, x: 1, y: 1, widthMm: 26, heightMm: 3, fontSize: 4, bold: true, descriptionMode: "first-word" },
       { key: "barcode", visible: true, x: 1, y: 5.5, widthMm: 26, heightMm: 5.5, fontSize: 5 },
       { key: "codigoInterno", visible: false, x: 1, y: 1, widthMm: 6, heightMm: 3, fontSize: 4 },
       { key: "precoVarejo", visible: false, x: 20, y: 1, widthMm: 8, heightMm: 3, fontSize: 4, bold: true, label: "" },
