@@ -72,9 +72,13 @@ export const storage = {
 
 export function ensureDefaultTemplates(templates: LabelTemplate[]) {
   const defaults = defaultTemplates();
-  const existingIds = new Set(templates.map((template) => template.id));
+  const defaultsById = new Map(defaults.map((template) => [template.id, template]));
+  const merged = templates.map((template) =>
+    template.id === "etiqueta-prn-3col-28x15" ? defaultsById.get(template.id) || template : template,
+  );
+  const existingIds = new Set(merged.map((template) => template.id));
   const missingDefaults = defaults.filter((template) => !existingIds.has(template.id));
-  return [...missingDefaults, ...templates];
+  return [...missingDefaults, ...merged];
 }
 
 export const defaultTemplates = (): LabelTemplate[] => [
@@ -93,10 +97,10 @@ export const defaultTemplates = (): LabelTemplate[] => [
     rowGapMm: 0,
     fontFamily: "Arial, sans-serif",
     fields: [
-      { key: "barcode", visible: true, x: 1, y: 1, widthMm: 26, heightMm: 5, fontSize: 5 },
-      { key: "codigoInterno", visible: true, x: 1, y: 7, widthMm: 6, heightMm: 3, fontSize: 4 },
-      { key: "descricao", visible: true, x: 7, y: 7, widthMm: 14, heightMm: 3, fontSize: 4, bold: true },
-      { key: "precoVarejo", visible: true, x: 21, y: 7, widthMm: 7, heightMm: 3, fontSize: 4, bold: true, label: "" },
+      { key: "descricao", visible: true, x: 1, y: 1, widthMm: 26, heightMm: 3, fontSize: 4, bold: true },
+      { key: "barcode", visible: true, x: 1, y: 6, widthMm: 26, heightMm: 6, fontSize: 5 },
+      { key: "codigoInterno", visible: false, x: 1, y: 1, widthMm: 6, heightMm: 3, fontSize: 4 },
+      { key: "precoVarejo", visible: false, x: 20, y: 1, widthMm: 8, heightMm: 3, fontSize: 4, bold: true, label: "" },
       { key: "ean", visible: false, x: 1, y: 11, widthMm: 26, heightMm: 3, fontSize: 4 },
       { key: "precoAtacado", visible: false, x: 1, y: 11, widthMm: 20, heightMm: 3, fontSize: 4, label: "AT R$" },
       { key: "secao", visible: false, x: 1, y: 11, widthMm: 20, heightMm: 3, fontSize: 4 },

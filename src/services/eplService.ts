@@ -23,7 +23,7 @@ function formatBRL(value?: number) {
 function fieldValue(field: LabelField, product: Product) {
   switch (field.key) {
     case "descricao":
-      return cleanText(product.descricao).slice(0, 28);
+      return cleanText(`${product.codigoInterno || ""} ${product.descricao}`.trim()).slice(0, 22);
     case "precoVarejo":
       return `${field.label ? `${field.label} ` : ""}${formatBRL(product.precoVarejo)}`.trim();
     case "precoAtacado":
@@ -44,7 +44,8 @@ function fieldValue(field: LabelField, product: Product) {
 function textFont(field: LabelField) {
   if (field.fontSize >= 18) return { font: 5, h: 1, w: 1 };
   if (field.fontSize >= 10) return { font: 4, h: 1, w: 1 };
-  return { font: 3, h: 1, w: 1 };
+  if (field.fontSize >= 6) return { font: 3, h: 1, w: 1 };
+  return { font: 1, h: 1, w: 1 };
 }
 
 function barcodeHeight(field: LabelField) {
