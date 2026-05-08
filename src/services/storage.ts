@@ -70,7 +70,39 @@ export const storage = {
   },
 };
 
+export function ensureDefaultTemplates(templates: LabelTemplate[]) {
+  const defaults = defaultTemplates();
+  const existingIds = new Set(templates.map((template) => template.id));
+  const missingDefaults = defaults.filter((template) => !existingIds.has(template.id));
+  return [...missingDefaults, ...templates];
+}
+
 export const defaultTemplates = (): LabelTemplate[] => [
+  {
+    id: "etiqueta-prn-102x21",
+    name: "PRN 102x21 - PADRAO",
+    widthMm: 102,
+    heightMm: 21,
+    marginMm: 0,
+    marginLeftMm: 0,
+    marginRightMm: 0,
+    marginTopMm: 0,
+    marginBottomMm: 0,
+    columns: 1,
+    columnGapMm: 0,
+    rowGapMm: 0,
+    fontFamily: "Arial, sans-serif",
+    fields: [
+      { key: "descricao", visible: true, x: 3, y: 4.875, widthMm: 50, heightMm: 4, fontSize: 6, bold: true },
+      { key: "precoVarejo", visible: true, x: 19.625, y: 4.25, widthMm: 30, heightMm: 4, fontSize: 6, bold: true, label: "R$" },
+      { key: "barcode", visible: true, x: 5, y: 10.375, widthMm: 48, heightMm: 5.5, fontSize: 5 },
+      { key: "ean", visible: false, x: 5, y: 16, widthMm: 48, heightMm: 3, fontSize: 5 },
+      { key: "precoAtacado", visible: false, x: 50, y: 10, widthMm: 30, heightMm: 4, fontSize: 6, label: "AT R$" },
+      { key: "secao", visible: false, x: 3, y: 1, widthMm: 30, heightMm: 3, fontSize: 5 },
+      { key: "estoque", visible: false, x: 75, y: 4, widthMm: 15, heightMm: 3, fontSize: 5 },
+      { key: "codigoInterno", visible: false, x: 3, y: 1, widthMm: 18, heightMm: 3, fontSize: 5 },
+    ],
+  },
   {
     id: "etiqueta-branca-28x15",
     name: "ETIQUETA BRANCA 28x15",

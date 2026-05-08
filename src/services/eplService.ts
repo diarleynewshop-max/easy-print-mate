@@ -60,16 +60,13 @@ function fieldHeight(field: LabelField) {
 }
 
 export function buildEplPrn(template: LabelTemplate, product: Product, copies: number) {
-  const columns = Math.max(1, template.columns || 1);
-  const columnGapMm = template.columnGapMm ?? 0;
   const rowGapMm = template.rowGapMm ?? 0;
   const marginLeftMm = template.marginLeftMm ?? 0;
   const marginTopMm = template.marginTopMm ?? 0;
   const marginRightMm = template.marginRightMm ?? 0;
   const marginBottomMm = template.marginBottomMm ?? 0;
-  const rows = Math.max(1, Math.ceil(copies / columns));
-  const pageWidthMm = columns * template.widthMm + Math.max(0, columns - 1) * columnGapMm + marginLeftMm + marginRightMm;
-  const pageHeightMm = rows * template.heightMm + Math.max(0, rows - 1) * rowGapMm + marginTopMm + marginBottomMm;
+  const pageWidthMm = template.widthMm + marginLeftMm + marginRightMm;
+  const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
   const pageWidthDots = mmToDots(pageWidthMm);
   const pageHeightDots = mmToDots(pageHeightMm);
   const gapDots = mmToDots(rowGapMm);
@@ -84,34 +81,27 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
     "N",
   ];
 
-  Array.from({ length: copies }).forEach((_, index) => {
-    const col = index % columns;
-    const row = Math.floor(index / columns);
-    const offsetX = marginLeftMm + col * (template.widthMm + columnGapMm);
-    const offsetY = marginTopMm + row * (template.heightMm + rowGapMm);
+  template.fields
+    .filter((field) => field.visible)
+    .forEach((field) => {
+      const x = mmToDots(marginLeftMm + field.x);
+      const y = mmToDots(marginTopMm + field.y);
 
-    template.fields
-      .filter((field) => field.visible)
-      .forEach((field) => {
-        const x = mmToDots(offsetX + field.x);
-        const y = mmToDots(offsetY + field.y);
+      if (field.key === "barcode") {
+        const barcode = cleanText(product.codigo_barras || product.ean);
+        if (!barcode) return;
+        lines.push(`B${x},${y},0,E30,2,4,${barcodeHeight(field)},N,"${barcode}"`);
+        return;
+      }
 
-        if (field.key === "barcode") {
-          const barcode = cleanText(product.codigo_barras || product.ean);
-          if (!barcode) return;
-          lines.push(`B${x},${y},0,E30,2,4,${barcodeHeight(field)},N,"${barcode}"`);
-          return;
-        }
+      const value = cleanText(fieldValue(field, product));
+      if (!value) return;
+      const { font, h, w } = textFont(field);
+      const reverse = "N";
+      lines.push(`A${x},${y},0,${font},${h},${w},${reverse},"${value}"`);
+    });
 
-        const value = cleanText(fieldValue(field, product));
-        if (!value) return;
-        const { font, h, w } = textFont(field);
-        const reverse = "N";
-        lines.push(`A${x},${y},0,${font},${h},${w},${reverse},"${value}"`);
-      });
-  });
-
-  lines.push("P1");
+  lines.push(`P${Math.max(1, copies)}`);
   return `${lines.join("\r\n")}\r\n`;
 }
 

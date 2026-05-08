@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
-import { storage, defaultTemplates } from "@/services/storage";
+import { storage, defaultTemplates, ensureDefaultTemplates } from "@/services/storage";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
-import { printService } from "@/services/printService";
 import { downloadEplPrn } from "@/services/eplService";
 import { ProductSearch } from "@/components/ProductSearch";
 import { LabelPreview } from "@/components/LabelPreview";
@@ -34,13 +33,16 @@ const Index = () => {
   const [history, setHistory] = useState<HistoryEntry[]>(() => storage.getHistory());
   const [templates, setTemplates] = useState<LabelTemplate[]>(() => {
     const t = storage.getTemplates();
-    if (t.length) return t;
-    const d = defaultTemplates();
+    const d = t.length ? ensureDefaultTemplates(t) : defaultTemplates();
     storage.saveTemplates(d);
     return d;
   });
   const [activeTemplateId, setActiveTemplateId] = useState<string>(
-    () => storage.getActiveTemplateId() || defaultTemplates()[0].id,
+    () => {
+      const id = "etiqueta-prn-102x21";
+      storage.setActiveTemplateId(id);
+      return id;
+    },
   );
 
   const activeTemplate = useMemo(
@@ -92,7 +94,8 @@ const Index = () => {
     storage.pushPrintEvent(evt);
     setPrintEvents(storage.getPrintEvents());
     lastActionRef.current = now;
-    printService.printBrowser();
+    downloadEplPrn(activeTemplate, product, copies);
+    toast.success("PRN EPL gerado");
     setTimeout(() => {
       setCode("");
       focusInput();
@@ -245,10 +248,10 @@ const Index = () => {
                   />
                 </div>
                 <Button onClick={handlePrint} disabled={!product} className="w-full h-12 text-base">
-                  <Printer /> Imprimir {copies > 1 ? `(${copies})` : ""}
+                  <Printer /> Imprimir PRN {copies > 1 ? `(${copies})` : ""}
                 </Button>
                 <Button onClick={handleDownloadPrn} disabled={!product} variant="outline" className="w-full h-10">
-                  <Download /> Baixar PRN Bartender
+                  <Download /> Baixar PRN
                 </Button>
               </div>
             </aside>
