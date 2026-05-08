@@ -88,6 +88,13 @@ function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: 
   return Math.min(narrow, 4);
 }
 
+function eplBarcodeType(field: LabelField, payload: string) {
+  const format = field.barcodeFormat || "auto";
+  if (format === "CODE128") return "1";
+  if (format === "auto" && !/^\d+$/.test(payload)) return "1";
+  return "E30";
+}
+
 export function buildEplPrn(template: LabelTemplate, product: Product, copies: number) {
   const columns = Math.max(1, template.columns || 1);
   const columnGapMm = template.columnGapMm ?? 0;
@@ -131,9 +138,9 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
           const barcode = cleanText(product.codigo_barras || product.ean);
           if (!barcode) return;
           const narrow = autoBarcodeNarrow(field, template, barcode);
-          const wide = Math.max(2, Math.min(3, field.barcodeWideRatio ?? 2));
+          const wide = Math.max(2, Math.min(4, field.barcodeWideRatio ?? 3));
           const printText = field.barcodeDisplayValue === false ? "N" : "B";
-          lines.push(`B${x},${y},0,1,${narrow},${wide},${barcodeHeight(field)},${printText},"${barcode}"`);
+          lines.push(`B${x},${y},0,${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field)},${printText},"${barcode}"`);
           return;
         }
 
