@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/start-dev.cjs",
+    "dev:vite": "vite",
+    "print-server": "node scripts/print-server.cjs",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",

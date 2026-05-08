@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
 import { storage, defaultTemplates, ensureDefaultTemplates } from "@/services/storage";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
-import { downloadEplPrn } from "@/services/eplService";
+import { buildEplPrn, downloadEplPrn } from "@/services/eplService";
+import { printService } from "@/services/printService";
 import { ProductSearch } from "@/components/ProductSearch";
 import { LabelPreview } from "@/components/LabelPreview";
 import { LabelEditor } from "@/components/LabelEditor";
@@ -80,7 +81,7 @@ const Index = () => {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!product) return toast.error("Nenhum produto selecionado");
     const now = Date.now();
     const evt: PrintEvent = {
@@ -94,34 +95,22 @@ const Index = () => {
     storage.pushPrintEvent(evt);
     setPrintEvents(storage.getPrintEvents());
     lastActionRef.current = now;
-    downloadEplPrn(activeTemplate, product, copies);
-    toast.success("PRN EPL gerado");
-    setTimeout(() => {
-      setCode("");
-      focusInput();
-    }, 300);
+    try {
+      await printService.printRawPrn(buildEplPrn(activeTemplate, product, copies));
+      toast.success("Enviado para ELGIN L42PRO FULL");
+      setTimeout(() => {
+        setCode("");
+        focusInput();
+      }, 300);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao imprimir");
+    }
   };
 
   const handleDownloadPrn = () => {
     if (!product) return toast.error("Nenhum produto selecionado");
-    const now = Date.now();
-    const evt: PrintEvent = {
-      ean: product.ean,
-      descricao: product.descricao,
-      quantidade: copies,
-      templateId: activeTemplateId,
-      at: now,
-      durationMs: now - lastActionRef.current,
-    };
-    storage.pushPrintEvent(evt);
-    setPrintEvents(storage.getPrintEvents());
-    lastActionRef.current = now;
     downloadEplPrn(activeTemplate, product, copies);
     toast.success("PRN EPL gerado");
-    setTimeout(() => {
-      setCode("");
-      focusInput();
-    }, 300);
   };
 
   const reuseFromHistory = (ean: string) => {
