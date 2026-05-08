@@ -21,6 +21,22 @@ export async function fetchProductByEan(cfg: VFConfig, ean: string, signal?: Abo
   const code = ean.trim();
   if (!code) throw new VFError("Codigo vazio");
 
+  if (window.easyPrint?.isDesktop) {
+    try {
+      const data = await window.easyPrint.fetchProductByEan(cfg, code);
+      if (data.debug) console.info("[Varejo Facil][debug]", data.debug);
+      return data.product;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha de conexao com o ERP";
+      try {
+        const parsed = JSON.parse(message) as { message?: string; status?: number; debug?: unknown };
+        return Promise.reject(new VFError(parsed.message || "Erro ao consultar ERP", parsed.status, parsed.debug));
+      } catch {
+        throw new VFError(message);
+      }
+    }
+  }
+
   const params = new URLSearchParams({ codigo: code });
   if (cfg.empresa) params.set("empresa", cfg.empresa);
   if (cfg.loja) params.set("loja", cfg.loja);
@@ -45,7 +61,7 @@ export async function fetchProductByEan(cfg: VFConfig, ean: string, signal?: Abo
   }
 
   if (response.status === 401) {
-    throw new VFError("ERP nao autorizado. Verifique token, usuario ou senha na Vercel.", 401, data.debug);
+    throw new VFError("ERP nao autorizado. Verifique token, usuario ou senha.", 401, data.debug);
   }
 
   if (response.status === 404) {

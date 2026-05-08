@@ -4,6 +4,7 @@ const fsp = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
+const { consultarProduto, loadErpEnv } = require("./varejo-facil.cjs");
 
 const RAW_PRINTER_NAME = process.env.RAW_PRINTER_NAME || "ELGIN L42PRO FULL";
 
@@ -12,7 +13,32 @@ function getDataDir() {
 }
 
 function ensureDataDir() {
-  fs.mkdirSync(getDataDir(), { recursive: true });
+  const dataDir = getDataDir();
+  fs.mkdirSync(dataDir, { recursive: true });
+  const envExamplePath = path.join(dataDir, ".env.example");
+  if (!fs.existsSync(envExamplePath)) {
+    fs.writeFileSync(envExamplePath, [
+      "ERP_API_URL_NEWSHOP=https://newshop.varejofacil.com",
+      "ERP_API_USERNAME_NEWSHOP=",
+      "ERP_API_PASSWORD_NEWSHOP=",
+      "ERP_API_TOKEN_NEWSHOP=",
+      "ERP_API_LOJA_ID_NEWSHOP=2",
+      "",
+      "ERP_API_URL_SOYE=https://soye.varejofacil.com",
+      "ERP_API_USERNAME_SOYE=",
+      "ERP_API_PASSWORD_SOYE=",
+      "ERP_API_TOKEN_SOYE=",
+      "ERP_API_LOJA_ID_SOYE=1",
+      "",
+      "ERP_API_URL_FACIL=https://facil.varejofacil.com",
+      "ERP_API_USERNAME_FACIL=",
+      "ERP_API_PASSWORD_FACIL=",
+      "ERP_API_TOKEN_FACIL=",
+      "ERP_API_LOJA_ID_FACIL=1",
+      "",
+    ].join("\n"), "utf8");
+  }
+  loadErpEnv(dataDir);
 }
 
 function getStorePath() {
@@ -118,6 +144,26 @@ ipcMain.handle("local-data:remove-item", (_event, key) => {
 });
 
 ipcMain.handle("print:health", () => ({ ok: true, printerName: RAW_PRINTER_NAME, dataDir: getDataDir() }));
+
+ipcMain.handle("erp:fetch-product", async (_event, config, codigo) => {
+  const code = String(codigo || "").trim();
+  if (!code) {
+    const error = new Error("Codigo vazio");
+    error.status = 400;
+    throw error;
+  }
+
+  try {
+    return await consultarProduto({ ...config, codigo: code });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error("Erro desconhecido");
+    throw new Error(JSON.stringify({
+      message: err.message,
+      status: err.status,
+      debug: err.debug,
+    }));
+  }
+});
 
 ipcMain.handle("print:raw-prn", async (_event, content, printerName = RAW_PRINTER_NAME) => {
   if (!content) throw new Error("Conteudo PRN vazio");

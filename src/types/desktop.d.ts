@@ -4,6 +4,12 @@ interface EasyPrintBridge {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<boolean>;
   removeItem(key: string): Promise<boolean>;
+  fetchProductByEan(config: import("@/types/label").VFConfig, codigo: string): Promise<{
+    product: import("@/types/label").Product;
+    empresa: string;
+    lojaId: number | null;
+    debug?: unknown;
+  }>;
   printRawPrn(content: string, printerName?: string): Promise<{ ok: boolean; printerName: string; savedPath?: string }>;
   printHealth(): Promise<{ ok: boolean; printerName: string; dataDir: string }>;
 }

@@ -47,8 +47,8 @@ export function ApiConfig({ config, onSave }: Props) {
       <Button onClick={save}>Salvar configuracao</Button>
 
       <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground space-y-2">
-        <p>Token, usuario, senha e URL do ERP ficam nas variaveis de ambiente da Vercel.</p>
-        <p>O navegador envia apenas empresa, loja e codigo de barras para o proxy interno `/api/varejo-facil`.</p>
+        <p>No app local, token, usuario, senha e URL do ERP ficam no arquivo `.env` da pasta Documentos/Easy Print Mate.</p>
+        <p>Na Web, a consulta continua usando o proxy interno `/api/varejo-facil`.</p>
         <p>Consulta apenas leitura: descricao, valor de venda, codigo de barras, estoque e dados opcionais.</p>
       </div>
     </div>
