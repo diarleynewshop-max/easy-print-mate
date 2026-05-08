@@ -5,6 +5,15 @@ export type PrintServerStatus = "online" | "offline" | "checking";
 const SERVER_URL = "http://127.0.0.1:8787";
 
 export async function pingPrintServer(): Promise<boolean> {
+  if (window.easyPrint?.isDesktop) {
+    try {
+      const res = await window.easyPrint.printHealth();
+      return Boolean(res.ok);
+    } catch {
+      return false;
+    }
+  }
+
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 1500);

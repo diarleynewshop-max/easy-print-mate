@@ -3,6 +3,11 @@ export const printService = {
     window.print();
   },
   async printRawPrn(content: string, printerName = "ELGIN L42PRO FULL"): Promise<void> {
+    if (window.easyPrint?.isDesktop) {
+      await window.easyPrint.printRawPrn(content, printerName);
+      return;
+    }
+
     const response = await fetch("http://127.0.0.1:8787/print-raw", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

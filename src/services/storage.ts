@@ -9,37 +9,74 @@ const K = {
   prints: "vf_print_events",
 };
 
+const memoryStore: Record<string, string> = {};
+let localLoaded = false;
+
+function readLocal(key: string) {
+  if (window.easyPrint?.isDesktop) return memoryStore[key] ?? null;
+  return localStorage.getItem(key);
+}
+
+function writeLocal(key: string, value: string) {
+  if (window.easyPrint?.isDesktop) {
+    memoryStore[key] = value;
+    void window.easyPrint.setItem(key, value);
+    return;
+  }
+  localStorage.setItem(key, value);
+}
+
+function removeLocal(key: string) {
+  if (window.easyPrint?.isDesktop) {
+    delete memoryStore[key];
+    void window.easyPrint.removeItem(key);
+    return;
+  }
+  localStorage.removeItem(key);
+}
+
+export async function loadLocalData() {
+  if (!window.easyPrint?.isDesktop || localLoaded) return;
+  await Promise.all(
+    Object.values(K).map(async (key) => {
+      const value = await window.easyPrint!.getItem(key);
+      if (value != null) memoryStore[key] = value;
+    }),
+  );
+  localLoaded = true;
+}
+
 export const storage = {
   getTemplates(): LabelTemplate[] {
     try {
-      const raw = localStorage.getItem(K.templates);
+      const raw = readLocal(K.templates);
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
     }
   },
   saveTemplates(t: LabelTemplate[]) {
-    localStorage.setItem(K.templates, JSON.stringify(t));
+    writeLocal(K.templates, JSON.stringify(t));
   },
   getActiveTemplateId(): string | null {
-    return localStorage.getItem(K.activeTemplate);
+    return readLocal(K.activeTemplate);
   },
   setActiveTemplateId(id: string) {
-    localStorage.setItem(K.activeTemplate, id);
+    writeLocal(K.activeTemplate, id);
   },
   getConfig(): VFConfig {
     try {
-      const raw = localStorage.getItem(K.config);
+      const raw = readLocal(K.config);
       if (raw) return JSON.parse(raw);
     } catch {}
     return { baseUrl: "", token: "", empresa: "NEWSHOP", loja: "" };
   },
   saveConfig(cfg: VFConfig) {
-    localStorage.setItem(K.config, JSON.stringify(cfg));
+    writeLocal(K.config, JSON.stringify(cfg));
   },
   getHistory(): HistoryEntry[] {
     try {
-      const raw = localStorage.getItem(K.history);
+      const raw = readLocal(K.history);
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -48,14 +85,14 @@ export const storage = {
   pushHistory(e: HistoryEntry) {
     const list = storage.getHistory().filter((x) => x.ean !== e.ean);
     list.unshift(e);
-    localStorage.setItem(K.history, JSON.stringify(list.slice(0, 30)));
+    writeLocal(K.history, JSON.stringify(list.slice(0, 30)));
   },
   clearHistory() {
-    localStorage.removeItem(K.history);
+    removeLocal(K.history);
   },
   getPrintEvents(): PrintEvent[] {
     try {
-      const raw = localStorage.getItem(K.prints);
+      const raw = readLocal(K.prints);
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -64,10 +101,10 @@ export const storage = {
   pushPrintEvent(e: PrintEvent) {
     const list = storage.getPrintEvents();
     list.unshift(e);
-    localStorage.setItem(K.prints, JSON.stringify(list.slice(0, 5000)));
+    writeLocal(K.prints, JSON.stringify(list.slice(0, 5000)));
   },
   clearPrintEvents() {
-    localStorage.removeItem(K.prints);
+    removeLocal(K.prints);
   },
 };
 
