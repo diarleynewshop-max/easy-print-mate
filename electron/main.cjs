@@ -62,7 +62,9 @@ function createWindow() {
 
 function runPowerShellPrint(filePath, printerName) {
   return new Promise((resolve, reject) => {
-    const scriptPath = path.join(__dirname, "..", "scripts", "print-raw.ps1");
+    const scriptPath = app.isPackaged
+      ? path.join(process.resourcesPath, "app.asar.unpacked", "scripts", "print-raw.ps1")
+      : path.join(__dirname, "..", "scripts", "print-raw.ps1");
     const child = spawn("powershell.exe", [
       "-NoProfile",
       "-ExecutionPolicy",

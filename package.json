@@ -10,6 +10,7 @@
     "app": "electron .",
     "build": "vite build",
     "build:app": "vite build",
+    "dist:win": "vite build && electron-builder --win --x64",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -68,6 +69,35 @@
     "vaul": "^0.9.9",
     "zod": "^3.25.76"
   },
+  "build": {
+    "appId": "com.easyprintmate.local",
+    "productName": "Easy Print Mate",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "scripts/print-raw.ps1",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "scripts/print-raw.ps1"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "Easy Print Mate Portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.16",
@@ -89,6 +119,7 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
     "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "vite": "^5.4.19",
     "vitest": "^3.2.4"
   }
