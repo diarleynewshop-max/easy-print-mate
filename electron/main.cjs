@@ -52,6 +52,16 @@ function getPrnDir() {
   return dir;
 }
 
+function getHistoryDir() {
+  const dir = path.join(getDataDir(), "historico");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function getMetricsLogPath() {
+  return path.join(getHistoryDir(), "metricas-impressao.txt");
+}
+
 function readStore() {
   try {
     return JSON.parse(fs.readFileSync(getStorePath(), "utf8"));
@@ -121,6 +131,7 @@ function runPowerShellPrint(filePath, printerName) {
 ipcMain.handle("local-data:get-info", () => ({
   dataDir: getDataDir(),
   storePath: getStorePath(),
+  metricsLogPath: getMetricsLogPath(),
   printerName: RAW_PRINTER_NAME,
 }));
 
@@ -141,6 +152,59 @@ ipcMain.handle("local-data:remove-item", (_event, key) => {
   delete store[key];
   writeStore(store);
   return true;
+});
+
+ipcMain.handle("metrics:append-print-event", async (_event, event) => {
+  const filePath = getMetricsLogPath();
+  const header = "data_iso;timestamp;ean;descricao;quantidade;template_id;duracao_ms;status;preco_varejo;preco_atacado;estoque;secao;grupo;codigo_interno\n";
+  if (!fs.existsSync(filePath)) await fsp.writeFile(filePath, header, "utf8");
+  const clean = (value) => String(value ?? "").replace(/[\r\n;]/g, " ").trim();
+  const line = [
+    new Date(Number(event.at) || Date.now()).toISOString(),
+    Number(event.at) || Date.now(),
+    clean(event.ean),
+    clean(event.descricao),
+    Number(event.quantidade) || 0,
+    clean(event.templateId),
+    Number(event.durationMs) || 0,
+    clean(event.status || ""),
+    event.precoVarejo ?? "",
+    event.precoAtacado ?? "",
+    event.estoque ?? "",
+    clean(event.secao || ""),
+    clean(event.grupo || ""),
+    clean(event.codigoInterno || ""),
+  ].join(";") + "\n";
+  await fsp.appendFile(filePath, line, "utf8");
+  return { ok: true, filePath };
+});
+
+ipcMain.handle("metrics:read-print-events", async () => {
+  const filePath = getMetricsLogPath();
+  if (!fs.existsSync(filePath)) return [];
+  const text = await fsp.readFile(filePath, "utf8");
+  return text
+    .split(/\r?\n/)
+    .slice(1)
+    .filter(Boolean)
+    .map((line) => {
+      const [dataIso, timestamp, ean, descricao, quantidade, templateId, durationMs, status, precoVarejo, precoAtacado, estoque, secao, grupo, codigoInterno] = line.split(";");
+      return {
+        ean: ean || "",
+        descricao: descricao || "",
+        quantidade: Number(quantidade) || 0,
+        templateId: templateId || "",
+        at: Number(timestamp) || Date.parse(dataIso) || Date.now(),
+        durationMs: Number(durationMs) || 0,
+        status: status === "error" ? "error" : "success",
+        precoVarejo: precoVarejo ? Number(precoVarejo) : undefined,
+        precoAtacado: precoAtacado ? Number(precoAtacado) : undefined,
+        estoque: estoque ? Number(estoque) : undefined,
+        secao: secao || undefined,
+        grupo: grupo || undefined,
+        codigoInterno: codigoInterno || undefined,
+      };
+    });
 });
 
 ipcMain.handle("print:health", () => ({ ok: true, printerName: RAW_PRINTER_NAME, dataDir: getDataDir() }));

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { storage } from "@/services/storage";
 import { PrintEvent } from "@/types/label";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,12 @@ function fmtDuration(ms: number) {
 
 export function Metrics({ events, onClear }: Props) {
   const [range, setRange] = useState<"today" | "7d" | "30d" | "all">("today");
+  const [metricsLogPath, setMetricsLogPath] = useState("");
+
+  useEffect(() => {
+    if (!window.easyPrint?.isDesktop) return;
+    void window.easyPrint.getInfo().then((info) => setMetricsLogPath(info.metricsLogPath || ""));
+  }, []);
 
   const filtered = useMemo(() => {
     const now = Date.now();
@@ -69,11 +75,11 @@ export function Metrics({ events, onClear }: Props) {
   }, [filtered]);
 
   const exportCsv = () => {
-    const header = "ean;descricao;quantidade;vezes;ultima\n";
-    const rows = byProduct
+    const header = "data_iso;ean;descricao;quantidade;status;duracao_ms;preco_varejo;preco_atacado;estoque;secao;grupo;codigo_interno\n";
+    const rows = filtered
       .map(
-        (p) =>
-          `${p.ean};"${p.descricao.replace(/"/g, '""')}";${p.qtd};${p.vezes};${new Date(p.last).toISOString()}`,
+        (e) =>
+          `${new Date(e.at).toISOString()};${e.ean};"${e.descricao.replace(/"/g, '""')}";${e.quantidade};${e.status || ""};${e.durationMs};${e.precoVarejo ?? ""};${e.precoAtacado ?? ""};${e.estoque ?? ""};${e.secao || ""};${e.grupo || ""};${e.codigoInterno || ""}`,
       )
       .join("\n");
     const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8" });
@@ -89,7 +95,10 @@ export function Metrics({ events, onClear }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-bold">Métricas de impressão</h2>
+        <div>
+          <h2 className="text-xl font-bold">Métricas de impressão</h2>
+          {metricsLogPath && <p className="text-xs text-muted-foreground">Retroativo TXT: {metricsLogPath}</p>}
+        </div>
         <div className="flex items-center gap-2">
           {(["today", "7d", "30d", "all"] as const).map((r) => (
             <Button

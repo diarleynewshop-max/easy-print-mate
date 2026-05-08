@@ -127,6 +127,12 @@ const Index = () => {
       at: now,
       durationMs: now - lastActionRef.current,
       status,
+      precoVarejo: p.precoVarejo,
+      precoAtacado: p.precoAtacado,
+      estoque: p.estoque,
+      secao: p.secao,
+      grupo: p.grupo,
+      codigoInterno: p.codigoInterno,
     };
     storage.pushPrintEvent(evt);
     setPrintEvents(storage.getPrintEvents());

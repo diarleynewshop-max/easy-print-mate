@@ -99,6 +99,12 @@ export interface PrintEvent {
   at: number;
   durationMs: number;
   status?: "success" | "error";
+  precoVarejo?: number;
+  precoAtacado?: number;
+  estoque?: number;
+  secao?: string;
+  grupo?: string;
+  codigoInterno?: string;
 }
 
 export interface PrintQueueItem {

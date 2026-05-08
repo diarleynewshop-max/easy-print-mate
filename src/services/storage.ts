@@ -12,6 +12,15 @@ const K = {
 const memoryStore: Record<string, string> = {};
 let localLoaded = false;
 
+function mergePrintEvents(current: PrintEvent[], archived: PrintEvent[]) {
+  const map = new Map<string, PrintEvent>();
+  for (const event of [...current, ...archived]) {
+    if (!event?.ean || !event.at) continue;
+    map.set(`${event.at}:${event.ean}:${event.quantidade}:${event.status || ""}`, event);
+  }
+  return Array.from(map.values()).sort((a, b) => b.at - a.at);
+}
+
 function readLocal(key: string) {
   if (window.easyPrint?.isDesktop) return memoryStore[key] ?? null;
   return localStorage.getItem(key);
@@ -43,6 +52,16 @@ export async function loadLocalData() {
       if (value != null) memoryStore[key] = value;
     }),
   );
+  const archivedPrints = await window.easyPrint.readPrintEvents().catch(() => []);
+  if (archivedPrints.length) {
+    let currentPrints: PrintEvent[] = [];
+    try {
+      currentPrints = memoryStore[K.prints] ? JSON.parse(memoryStore[K.prints]) as PrintEvent[] : [];
+    } catch {
+      currentPrints = [];
+    }
+    memoryStore[K.prints] = JSON.stringify(mergePrintEvents(currentPrints, archivedPrints));
+  }
   localLoaded = true;
 }
 
@@ -102,6 +121,9 @@ export const storage = {
     const list = storage.getPrintEvents();
     list.unshift(e);
     writeLocal(K.prints, JSON.stringify(list.slice(0, 5000)));
+    if (window.easyPrint?.isDesktop) {
+      void window.easyPrint.appendPrintEvent(e);
+    }
   },
   clearPrintEvents() {
     removeLocal(K.prints);

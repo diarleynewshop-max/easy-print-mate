@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("easyPrint", {
   getItem: (key) => ipcRenderer.invoke("local-data:get-item", key),
   setItem: (key, value) => ipcRenderer.invoke("local-data:set-item", key, value),
   removeItem: (key) => ipcRenderer.invoke("local-data:remove-item", key),
+  appendPrintEvent: (event) => ipcRenderer.invoke("metrics:append-print-event", event),
+  readPrintEvents: () => ipcRenderer.invoke("metrics:read-print-events"),
   fetchProductByEan: (config, codigo) => ipcRenderer.invoke("erp:fetch-product", config, codigo),
   printRawPrn: (content, printerName) => ipcRenderer.invoke("print:raw-prn", content, printerName),
   printHealth: () => ipcRenderer.invoke("print:health"),

@@ -1,9 +1,11 @@
 interface EasyPrintBridge {
   isDesktop: boolean;
-  getInfo(): Promise<{ dataDir: string; storePath: string; printerName: string }>;
+  getInfo(): Promise<{ dataDir: string; storePath: string; metricsLogPath?: string; printerName: string }>;
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<boolean>;
   removeItem(key: string): Promise<boolean>;
+  appendPrintEvent(event: import("@/types/label").PrintEvent): Promise<{ ok: boolean; filePath: string }>;
+  readPrintEvents(): Promise<import("@/types/label").PrintEvent[]>;
   fetchProductByEan(config: import("@/types/label").VFConfig, codigo: string): Promise<{
     product: import("@/types/label").Product;
     empresa: string;
