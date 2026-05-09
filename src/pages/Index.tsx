@@ -583,6 +583,12 @@ const Index = () => {
             />
           </div>
         )}
+
+        {view === "a4" && (
+          <div className="flex-1 overflow-hidden no-print">
+            <A4Module config={config} />
+          </div>
+        )}
       </main>
     </div>
   );
