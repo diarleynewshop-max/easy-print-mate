@@ -29,12 +29,31 @@ let electron;
 
 function startElectron() {
   if (electron) return;
-  electron = spawn(electronBin, ["."], {
-    stdio: "inherit",
-    cwd: path.join(__dirname, ".."),
-    env: { ...process.env, ELECTRON_RENDERER_URL: url },
-  });
-  electron.on("exit", (code) => shutdown(code || 0));
+  if (process.env.SKIP_ELECTRON === "1" || !require("fs").existsSync(electronBin)) {
+    console.log("[electron-dev] Electron desabilitado, mantendo apenas Vite.");
+    return;
+  }
+  try {
+    electron = spawn(electronBin, ["."], {
+      stdio: "inherit",
+      cwd: path.join(__dirname, ".."),
+      env: { ...process.env, ELECTRON_RENDERER_URL: url },
+    });
+    electron.on("error", (err) => {
+      console.warn("[electron-dev] Electron nao pode ser iniciado, seguindo apenas com Vite:", err.message);
+      electron = null;
+    });
+    electron.on("exit", (code) => {
+      if (code && code !== 0) {
+        console.warn(`[electron-dev] Electron saiu com codigo ${code}, mantendo Vite ativo.`);
+        electron = null;
+        return;
+      }
+      shutdown(code || 0);
+    });
+  } catch (err) {
+    console.warn("[electron-dev] Falha ao iniciar Electron:", err.message);
+  }
 }
 
 function shutdown(code = 0) {

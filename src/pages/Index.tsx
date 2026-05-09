@@ -12,6 +12,7 @@ import { LabelPreview } from "@/components/LabelPreview";
 import { LabelEditor } from "@/components/LabelEditor";
 import { ApiConfig } from "@/components/ApiConfig";
 import { Metrics } from "@/components/Metrics";
+import { A4Module } from "@/components/A4Module";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -34,10 +35,11 @@ import {
   Minus,
   AlertTriangle,
   CheckCircle2,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type View = "scan" | "editor" | "config" | "metrics";
+type View = "scan" | "editor" | "config" | "metrics" | "a4";
 
 const Index = () => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -273,6 +275,7 @@ const Index = () => {
         <nav className="p-2 space-y-1">
           <NavBtn icon={<Tag />} label="Bipar / Imprimir" active={view === "scan"} onClick={() => { setView("scan"); focusInput(); }} />
           <NavBtn icon={<Pencil />} label="Editor de etiqueta" active={view === "editor"} onClick={() => setView("editor")} />
+          <NavBtn icon={<FileText />} label="Etiquetas A4 / PDF" active={view === "a4"} onClick={() => setView("a4")} />
           <NavBtn icon={<BarChart3 />} label="Métricas" active={view === "metrics"} onClick={() => setView("metrics")} />
           <NavBtn icon={<Settings />} label="Configuração API" active={view === "config"} onClick={() => setView("config")} />
         </nav>
@@ -578,6 +581,12 @@ const Index = () => {
               events={printEvents}
               onClear={() => { storage.clearPrintEvents(); setPrintEvents([]); }}
             />
+          </div>
+        )}
+
+        {view === "a4" && (
+          <div className="flex-1 overflow-hidden no-print">
+            <A4Module config={config} />
           </div>
         )}
       </main>
