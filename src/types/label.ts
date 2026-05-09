@@ -105,6 +105,7 @@ export interface PrintEvent {
   secao?: string;
   grupo?: string;
   codigoInterno?: string;
+  usuario?: string;
 }
 
 export interface PrintQueueItem {

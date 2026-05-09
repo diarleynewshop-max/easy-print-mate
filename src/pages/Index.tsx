@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent, PrintQueueItem } from "@/types/label";
 import { storage, defaultTemplates, ensureDefaultTemplates, restoreElginPreset } from "@/services/storage";
 import { ELGIN_PRESET_ID } from "@/services/presets";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
 import { buildEplBatchPrn, buildEplPrn, buildTestPrn, buildCalibrationPrn, downloadEplPrn } from "@/services/eplService";
 import { printService } from "@/services/printService";
+import { requestPrintUserName } from "@/services/printUser";
 import { validateTemplate, computeHorizontalSpacing } from "@/services/labelValidation";
 import { usePrintServerStatus } from "@/hooks/usePrintServerStatus";
 import { ProductSearch } from "@/components/ProductSearch";
@@ -87,7 +88,7 @@ const Index = () => {
   const queueRows = Math.ceil(queueTotal / cols);
 
   useEffect(() => {
-    document.title = "Easy Print Mate — Elgin L42PRO";
+    document.title = "Easy Print Mate â€” Elgin L42PRO";
   }, []);
 
   const focusInput = () => setTimeout(() => inputRef.current?.focus(), 50);
@@ -119,7 +120,7 @@ const Index = () => {
     }
   };
 
-  const recordEvent = (p: Product, qty: number, status: "success" | "error") => {
+  const recordEvent = (p: Product, qty: number, status: "success" | "error", usuario = "padrao") => {
     const now = Date.now();
     const evt: PrintEvent = {
       ean: p.ean,
@@ -135,6 +136,7 @@ const Index = () => {
       secao: p.secao,
       grupo: p.grupo,
       codigoInterno: p.codigoInterno,
+      usuario,
     };
     storage.pushPrintEvent(evt);
     setPrintEvents(storage.getPrintEvents());
@@ -156,10 +158,12 @@ const Index = () => {
 
   const handlePrint = async () => {
     if (!product) return toast.error("Nenhum produto selecionado");
-    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
+    if (printerStatus !== "online") return toast.error("Servidor de impressÃ£o offline");
     if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
+    const usuario = requestPrintUserName();
+    if (usuario === null) return;
     const ok = await sendRaw(buildEplPrn(activeTemplate, product, copies), `${copies} etiqueta(s)`);
-    recordEvent(product, copies, ok ? "success" : "error");
+    recordEvent(product, copies, ok ? "success" : "error", usuario);
     if (ok) {
       lastPrintedRef.current = product;
       setTimeout(() => {
@@ -187,7 +191,7 @@ const Index = () => {
         },
       ];
     });
-    toast.success(`${copies} etiqueta(s) adicionada(s) à fila`);
+    toast.success(`${copies} etiqueta(s) adicionada(s) Ã  fila`);
     setCode("");
     focusInput();
   };
@@ -206,10 +210,12 @@ const Index = () => {
 
   const handlePrintQueue = async () => {
     if (!printQueue.length) return toast.error("Fila vazia");
-    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
+    if (printerStatus !== "online") return toast.error("Servidor de impressÃ£o offline");
     if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
+    const usuario = requestPrintUserName();
+    if (usuario === null) return;
     const ok = await sendRaw(buildEplBatchPrn(activeTemplate, printQueue), `Fila com ${queueTotal} etiqueta(s)`);
-    printQueue.forEach((item) => recordEvent(item.product, item.quantity, ok ? "success" : "error"));
+    printQueue.forEach((item) => recordEvent(item.product, item.quantity, ok ? "success" : "error", usuario));
     if (ok) {
       lastPrintedRef.current = printQueue[printQueue.length - 1]?.product || null;
       setPrintQueue([]);
@@ -220,20 +226,24 @@ const Index = () => {
 
   const handleReprintLast = async () => {
     const p = lastPrintedRef.current;
-    if (!p) return toast.error("Nenhuma impressão anterior");
-    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
-    const ok = await sendRaw(buildEplPrn(activeTemplate, p, copies), "Reimpressão");
-    recordEvent(p, copies, ok ? "success" : "error");
+    if (!p) return toast.error("Nenhuma impressÃ£o anterior");
+    if (printerStatus !== "online") return toast.error("Servidor de impressÃ£o offline");
+    const usuario = requestPrintUserName();
+    if (usuario === null) return;
+    const ok = await sendRaw(buildEplPrn(activeTemplate, p, copies), "Reimpressao");
+    recordEvent(p, copies, ok ? "success" : "error", usuario);
   };
 
   const handleTestPrint = async () => {
-    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
+    if (printerStatus !== "online") return toast.error("Servidor de impressÃ£o offline");
+    if (requestPrintUserName() === null) return;
     await sendRaw(buildTestPrn(activeTemplate), "Etiqueta de teste");
   };
 
   const handleCalibration = async () => {
-    if (printerStatus !== "online") return toast.error("Servidor de impressão offline");
-    await sendRaw(buildCalibrationPrn(activeTemplate), "Calibração");
+    if (printerStatus !== "online") return toast.error("Servidor de impressÃ£o offline");
+    if (requestPrintUserName() === null) return;
+    await sendRaw(buildCalibrationPrn(activeTemplate), "CalibraÃ§Ã£o");
   };
 
   const handleDownloadPrn = () => {
@@ -268,7 +278,7 @@ const Index = () => {
           <Tag className="h-5 w-5 text-sidebar-primary" />
           <div>
             <h1 className="font-bold leading-tight text-sm">Easy Print Mate</h1>
-            <p className="text-[11px] opacity-70">Elgin L42PRO · EPL RAW</p>
+            <p className="text-[11px] opacity-70">Elgin L42PRO Â· EPL RAW</p>
           </div>
         </div>
 
@@ -276,12 +286,12 @@ const Index = () => {
           <NavBtn icon={<Tag />} label="Bipar / Imprimir" active={view === "scan"} onClick={() => { setView("scan"); focusInput(); }} />
           <NavBtn icon={<Pencil />} label="Editor de etiqueta" active={view === "editor"} onClick={() => setView("editor")} />
           <NavBtn icon={<FileText />} label="Etiquetas A4 / PDF" active={view === "a4"} onClick={() => setView("a4")} />
-          <NavBtn icon={<BarChart3 />} label="Métricas" active={view === "metrics"} onClick={() => setView("metrics")} />
-          <NavBtn icon={<Settings />} label="Configuração API" active={view === "config"} onClick={() => setView("config")} />
+          <NavBtn icon={<BarChart3 />} label="MÃ©tricas" active={view === "metrics"} onClick={() => setView("metrics")} />
+          <NavBtn icon={<Settings />} label="ConfiguraÃ§Ã£o API" active={view === "config"} onClick={() => setView("config")} />
         </nav>
 
         <div className="px-3 mt-2 flex items-center justify-between text-[10px] uppercase opacity-60">
-          <span className="flex items-center gap-1"><History className="h-3 w-3" /> Histórico</span>
+          <span className="flex items-center gap-1"><History className="h-3 w-3" /> HistÃ³rico</span>
           {history.length > 0 && (
             <button className="hover:text-sidebar-primary" onClick={() => { storage.clearHistory(); setHistory([]); }}>
               <Trash2 className="h-3 w-3" />
@@ -325,7 +335,7 @@ const Index = () => {
           <StatusBadge
             online={printerStatus === "online"}
             checking={printerStatus === "checking"}
-            label={printerStatus === "online" ? "Servidor de impressão online" : printerStatus === "checking" ? "Verificando servidor..." : "Servidor offline"}
+            label={printerStatus === "online" ? "Servidor de impressÃ£o online" : printerStatus === "checking" ? "Verificando servidor..." : "Servidor offline"}
             iconOk={<Wifi className="h-3.5 w-3.5" />}
             iconFail={<WifiOff className="h-3.5 w-3.5" />}
           />
@@ -336,12 +346,12 @@ const Index = () => {
           <div className="flex items-center gap-1.5 rounded-md border bg-background px-2 py-1">
             <Tag className="h-3.5 w-3.5 text-muted-foreground" />
             <span>{activeTemplate.name}</span>
-            <span className="text-muted-foreground">· {activeTemplate.widthMm}×{activeTemplate.heightMm}mm</span>
+            <span className="text-muted-foreground">Â· {activeTemplate.widthMm}Ã—{activeTemplate.heightMm}mm</span>
           </div>
           {lastEvent && (
             <div className="ml-auto flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-muted-foreground">
-              Última: <span className="font-mono text-foreground">{lastEvent.ean}</span>
-              · {lastEvent.quantidade}x · {new Date(lastEvent.at).toLocaleTimeString()}
+              Ãšltima: <span className="font-mono text-foreground">{lastEvent.ean}</span>
+              Â· {lastEvent.quantidade}x Â· {new Date(lastEvent.at).toLocaleTimeString()}
             </div>
           )}
         </div>
@@ -377,16 +387,16 @@ const Index = () => {
                 {!loading && !error && product && (
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <Row label="EAN" value={product.ean} mono />
-                    <Row label="Cód. interno" value={product.codigoInterno} mono />
-                    <Row label="Descrição" value={product.descricao} full />
-                    <Row label="Seção" value={product.secao || product.grupo} />
+                    <Row label="CÃ³d. interno" value={product.codigoInterno} mono />
+                    <Row label="DescriÃ§Ã£o" value={product.descricao} full />
+                    <Row label="SeÃ§Ã£o" value={product.secao || product.grupo} />
                     <Row label="Estoque" value={product.estoque?.toString()} />
-                    <Row label="Preço varejo" value={product.precoVarejo != null ? `R$ ${product.precoVarejo.toFixed(2)}` : undefined} bold />
-                    <Row label="Preço atacado" value={product.precoAtacado != null ? `R$ ${product.precoAtacado.toFixed(2)}` : undefined} />
+                    <Row label="PreÃ§o varejo" value={product.precoVarejo != null ? `R$ ${product.precoVarejo.toFixed(2)}` : undefined} bold />
+                    <Row label="PreÃ§o atacado" value={product.precoAtacado != null ? `R$ ${product.precoAtacado.toFixed(2)}` : undefined} />
                   </div>
                 )}
                 {!loading && !error && !product && (
-                  <p className="text-sm text-muted-foreground">Bipe um código de barras para começar.</p>
+                  <p className="text-sm text-muted-foreground">Bipe um cÃ³digo de barras para comeÃ§ar.</p>
                 )}
               </div>
 
@@ -400,7 +410,7 @@ const Index = () => {
                     {hasErrors ? "Modelo com erros" : "Avisos no modelo"}
                   </div>
                   {issues.map((i, idx) => (
-                    <div key={idx} className="opacity-90">• {i.message}</div>
+                    <div key={idx} className="opacity-90">â€¢ {i.message}</div>
                   ))}
                 </div>
               )}
@@ -424,7 +434,7 @@ const Index = () => {
                 </Tabs>
 
                 <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span>Espaço entre col.: <strong className="text-foreground">{horizontalSpacing.toFixed(1)} mm</strong></span>
+                  <span>EspaÃ§o entre col.: <strong className="text-foreground">{horizontalSpacing.toFixed(1)} mm</strong></span>
                   <span>Folha: <strong className="text-foreground">{(activeTemplate.paperWidthMm ?? 0).toFixed(0)} mm</strong></span>
                 </div>
               </div>
@@ -432,7 +442,7 @@ const Index = () => {
               <div className="rounded-lg border bg-card p-3 space-y-3">
                 <div>
                   <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
-                    Quantidade ({cols} col → múltiplos de {cols})
+                    Quantidade ({cols} col â†’ mÃºltiplos de {cols})
                   </div>
                   <div className="flex items-center gap-2">
                     <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setCopies((c) => Math.max(1, c - 1))}>
@@ -472,21 +482,21 @@ const Index = () => {
                   variant="secondary"
                   className="w-full h-10 text-sm"
                 >
-                  <Plus className="h-4 w-4" /> Adicionar à fila
+                  <Plus className="h-4 w-4" /> Adicionar Ã  fila
                 </Button>
 
                 <div className="grid grid-cols-2 gap-2">
                   <Button onClick={handleReprintLast} variant="outline" size="sm" className="h-9 text-xs" disabled={!lastPrintedRef.current || printerStatus !== "online"}>
-                    <RotateCw className="h-3.5 w-3.5" /> Reimprimir último
+                    <RotateCw className="h-3.5 w-3.5" /> Reimprimir Ãºltimo
                   </Button>
                   <Button onClick={handleDownloadPrn} variant="outline" size="sm" className="h-9 text-xs" disabled={!product}>
                     <Download className="h-3.5 w-3.5" /> Baixar PRN
                   </Button>
                   <Button onClick={handleTestPrint} variant="outline" size="sm" className="h-9 text-xs" disabled={printerStatus !== "online"}>
-                    <TestTube2 className="h-3.5 w-3.5" /> Testar impressão
+                    <TestTube2 className="h-3.5 w-3.5" /> Testar impressÃ£o
                   </Button>
                   <Button onClick={handleCalibration} variant="outline" size="sm" className="h-9 text-xs" disabled={printerStatus !== "online"}>
-                    <Crosshair className="h-3.5 w-3.5" /> Calibração
+                    <Crosshair className="h-3.5 w-3.5" /> CalibraÃ§Ã£o
                   </Button>
                 </div>
               </div>
@@ -494,9 +504,9 @@ const Index = () => {
               <div className="rounded-lg border bg-card p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-sm font-semibold">Fila de impressão</h3>
+                    <h3 className="text-sm font-semibold">Fila de impressÃ£o</h3>
                     <p className="text-[10px] text-muted-foreground">
-                      {queueTotal} etiqueta{queueTotal === 1 ? "" : "s"} · {queueRows || 0} carreira{queueRows === 1 ? "" : "s"} · {cols} colunas
+                      {queueTotal} etiqueta{queueTotal === 1 ? "" : "s"} Â· {queueRows || 0} carreira{queueRows === 1 ? "" : "s"} Â· {cols} colunas
                     </p>
                   </div>
                   <Button
@@ -512,7 +522,7 @@ const Index = () => {
 
                 {printQueue.length === 0 ? (
                   <div className="rounded-md border border-dashed bg-muted/30 p-3 text-center text-xs text-muted-foreground">
-                    Adicione produtos para preencher as colunas sem desperdiçar etiqueta.
+                    Adicione produtos para preencher as colunas sem desperdiÃ§ar etiqueta.
                   </div>
                 ) : (
                   <div className="max-h-56 space-y-2 overflow-auto pr-1">
@@ -520,7 +530,7 @@ const Index = () => {
                       <div key={item.id} className="rounded-md border bg-background p-2">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <div className="text-[10px] font-mono text-muted-foreground">Item {index + 1} · {item.product.ean}</div>
+                            <div className="text-[10px] font-mono text-muted-foreground">Item {index + 1} Â· {item.product.ean}</div>
                             <div className="truncate text-xs font-medium">{item.product.descricao}</div>
                           </div>
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeQueueItem(item.id)}>
@@ -551,7 +561,7 @@ const Index = () => {
                   disabled={queuePrintDisabled}
                   className="w-full h-11 text-sm"
                 >
-                  <Printer className="h-4 w-4" /> Imprimir fila sem desperdício
+                  <Printer className="h-4 w-4" /> Imprimir fila sem desperdÃ­cio
                 </Button>
               </div>
             </aside>
@@ -570,7 +580,7 @@ const Index = () => {
 
         {view === "config" && (
           <div className="flex-1 p-6 overflow-auto no-print">
-            <h2 className="text-xl font-bold mb-4">Configuração da API Varejo Fácil</h2>
+            <h2 className="text-xl font-bold mb-4">ConfiguraÃ§Ã£o da API Varejo FÃ¡cil</h2>
             <ApiConfig config={config} onSave={setConfig} />
           </div>
         )}
@@ -682,7 +692,7 @@ function SheetPreviewMini({ template, product, copies }: { template: LabelTempla
         </div>
       </div>
       <p className="text-[10px] text-muted-foreground text-center">
-        {rows} carreira{rows > 1 ? "s" : ""} × {cols} coluna{cols > 1 ? "s" : ""} = {rows * cols} etiquetas (qtd: {copies})
+        {rows} carreira{rows > 1 ? "s" : ""} Ã— {cols} coluna{cols > 1 ? "s" : ""} = {rows * cols} etiquetas (qtd: {copies})
       </p>
     </div>
   );
@@ -717,7 +727,7 @@ function QueueGridPreview({ queue, columns }: { queue: PrintQueueItem[]; columns
         ))}
       </div>
       <div className="mt-2 text-center text-[10px] text-muted-foreground">
-        {waste === 0 ? "Sem coluna em branco." : `${waste} coluna${waste > 1 ? "s" : ""} em branco na última carreira.`}
+        {waste === 0 ? "Sem coluna em branco." : `${waste} coluna${waste > 1 ? "s" : ""} em branco na Ãºltima carreira.`}
       </div>
     </div>
   );
@@ -727,9 +737,10 @@ function Row({ label, value, mono, bold, full }: { label: string; value?: string
   return (
     <div className={cn("flex flex-col gap-0.5 border-b last:border-0 pb-1.5", full && "col-span-2")}>
       <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className={cn("truncate", mono && "font-mono text-xs", bold && "font-bold text-base")}>{value || "—"}</dd>
+      <dd className={cn("truncate", mono && "font-mono text-xs", bold && "font-bold text-base")}>{value || "â€”"}</dd>
     </div>
   );
 }
 
 export default Index;
+

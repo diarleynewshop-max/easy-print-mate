@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { A4Template, A4FilledBlock } from "@/types/a4";
+import { A4Template, A4FilledBlock, A4BlockCount } from "@/types/a4";
 import { Product, VFConfig } from "@/types/label";
 import { a4Storage, defaultA4Templates, newA4Template } from "@/services/a4Storage";
-import { downloadA4Pdf, getBlockRects, printA4Pdf, A4_WIDTH_MM, A4_HEIGHT_MM, getDynamicValue } from "@/services/a4PdfService";
+import { downloadA4Pdf, getA4RenderMetrics, getBlockRects, printA4Pdf, A4_WIDTH_MM, A4_HEIGHT_MM, getDynamicValue } from "@/services/a4PdfService";
+import { requestPrintUserName } from "@/services/printUser";
+import { storage } from "@/services/storage";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,16 +39,25 @@ export function A4Module({ config }: Props) {
   const [blocks, setBlocks] = useState<A4FilledBlock[]>([]);
   const [activeBlock, setActiveBlock] = useState(0);
   const [repeatMode, setRepeatMode] = useState(true);
+  const [printBlocks, setPrintBlocks] = useState<A4BlockCount>(1);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const active = templates.find((t) => t.id === activeId) || templates[0];
+  const printTemplate = active ? { ...active, blocks: printBlocks, sourceBlocks: active.blocks } : active;
 
   // resetar blocos quando trocar template (qtd de blocos pode mudar)
   useEffect(() => {
     if (!active) return;
+    setPrintBlocks(active.blocks);
     setBlocks(Array.from({ length: active.blocks }, () => ({ product: null })));
     setActiveBlock(0);
   }, [active?.id, active?.blocks]);
+
+  const changePrintBlocks = (count: A4BlockCount) => {
+    setPrintBlocks(count);
+    setBlocks((prev) => Array.from({ length: count }, (_, i) => prev[i] || { product: null }));
+    setActiveBlock((current) => Math.min(current, count - 1));
+  };
 
   const persist = (next: A4Template[], nextActive?: string) => {
     setTemplates(next);
@@ -95,7 +106,7 @@ export function A4Module({ config }: Props) {
       return next;
     });
     if (!repeatMode) {
-      setActiveBlock(Math.min(index + 1, (active?.blocks || 1) - 1));
+      setActiveBlock(Math.min(index + 1, printBlocks - 1));
     }
   };
 
@@ -126,7 +137,7 @@ export function A4Module({ config }: Props) {
 
   const clearAll = () => {
     if (!active) return;
-    setBlocks(Array.from({ length: active.blocks }, () => ({ product: null })));
+    setBlocks(Array.from({ length: printBlocks }, () => ({ product: null })));
     setActiveBlock(0);
   };
 
@@ -136,14 +147,35 @@ export function A4Module({ config }: Props) {
   const handleDownload = () => {
     if (!active) return;
     if (!hasAnyProduct) return toast.error("Bipe pelo menos um produto");
-    downloadA4Pdf(active, products, `${active.name.replace(/\s+/g, "_")}.pdf`);
+    downloadA4Pdf(printTemplate, products, `${active.name.replace(/\s+/g, "_")}_${printBlocks}por_folha.pdf`);
     toast.success("PDF gerado");
   };
 
   const handlePrint = () => {
     if (!active) return;
     if (!hasAnyProduct) return toast.error("Bipe pelo menos um produto");
-    printA4Pdf(active, products);
+    const usuario = requestPrintUserName();
+    if (usuario === null) return;
+    printA4Pdf(printTemplate, products);
+    products.forEach((product) => {
+      if (!product) return;
+      storage.pushPrintEvent({
+        ean: product.ean,
+        descricao: product.descricao,
+        quantidade: 1,
+        templateId: active.id,
+        at: Date.now(),
+        durationMs: 0,
+        status: "success",
+        precoVarejo: product.precoVarejo,
+        precoAtacado: product.precoAtacado,
+        estoque: product.estoque,
+        secao: product.secao,
+        grupo: product.grupo,
+        codigoInterno: product.codigoInterno,
+        usuario,
+      });
+    });
   };
 
   if (!active) {
@@ -221,6 +253,21 @@ export function A4Module({ config }: Props) {
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                <div className="flex items-center gap-1">
+                  <span className="mr-1 opacity-70">Dividir A4:</span>
+                  {([1, 2, 4] as const).map((count) => (
+                    <Button
+                      key={count}
+                      type="button"
+                      size="sm"
+                      variant={printBlocks === count ? "default" : "outline"}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => changePrintBlocks(count)}
+                    >
+                      {count}/folha
+                    </Button>
+                  ))}
+                </div>
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -232,7 +279,7 @@ export function A4Module({ config }: Props) {
                 </label>
                 {!repeatMode && (
                   <span className="rounded bg-primary/10 px-2 py-0.5 text-primary">
-                    Bipando para o bloco {activeBlock + 1} de {active.blocks}
+                    Bipando para o bloco {activeBlock + 1} de {printBlocks}
                   </span>
                 )}
               </div>
@@ -241,7 +288,7 @@ export function A4Module({ config }: Props) {
             {/* Blocos */}
             <div className="rounded-lg border bg-card p-4">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Blocos da folha ({active.blocks})</h3>
+                <h3 className="text-sm font-semibold">Blocos da folha ({printBlocks})</h3>
                 <Button size="sm" variant="ghost" onClick={clearAll}>
                   <Trash2 className="h-3.5 w-3.5" /> Limpar tudo
                 </Button>
@@ -249,9 +296,9 @@ export function A4Module({ config }: Props) {
               <div
                 className={cn(
                   "grid gap-2",
-                  active.blocks === 1 && "grid-cols-1",
-                  active.blocks === 2 && "grid-cols-1",
-                  active.blocks === 4 && "grid-cols-2",
+                  printBlocks === 1 && "grid-cols-1",
+                  printBlocks === 2 && "grid-cols-1",
+                  printBlocks === 4 && "grid-cols-2",
                 )}
               >
                 {blocks.map((b, i) => (
@@ -302,7 +349,7 @@ export function A4Module({ config }: Props) {
 
           <aside className="rounded-lg border bg-card p-3">
             <Label className="text-xs uppercase opacity-60">Pré-visualização A4</Label>
-            <A4Preview template={active} blocks={blocks} />
+            <A4Preview template={printTemplate} blocks={blocks} />
           </aside>
         </div>
       )}
@@ -324,7 +371,9 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
           position: "relative",
         }}
       >
-        {rects.map((rect, i) => (
+        {rects.map((rect, i) => {
+          const render = getA4RenderMetrics(template, rect);
+          return (
           <div
             key={i}
             className="absolute border border-dashed border-primary/30"
@@ -338,10 +387,8 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
             <div
               className="absolute"
               style={{
-                left: template.paddingMm * PREVIEW_SCALE,
-                top: template.paddingMm * PREVIEW_SCALE,
-                right: template.paddingMm * PREVIEW_SCALE,
-                bottom: template.paddingMm * PREVIEW_SCALE,
+                left: (render.x - rect.x) * PREVIEW_SCALE,
+                top: (render.y - rect.y) * PREVIEW_SCALE,
               }}
             >
               {template.elements.map((el) => {
@@ -356,20 +403,54 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
                     key={el.id}
                     className="absolute overflow-hidden"
                     style={{
-                      left: el.x * PREVIEW_SCALE,
-                      top: el.y * PREVIEW_SCALE,
-                      width: el.widthMm * PREVIEW_SCALE,
-                      height: el.heightMm * PREVIEW_SCALE,
+                      left: el.x * render.scale * PREVIEW_SCALE,
+                      top: el.y * render.scale * PREVIEW_SCALE,
+                      width: el.widthMm * render.scale * PREVIEW_SCALE,
+                      height: el.heightMm * render.scale * PREVIEW_SCALE,
                     }}
                   >
-                    {el.type === "barcode" ? (
+                    {el.type === "shape" ? (
+                      <div
+                        className={cn(
+                          "h-full w-full",
+                          el.shapeKind !== "line" && "border",
+                          el.shapeKind === "circle" && "rounded-full",
+                          el.shapeKind === "roundRect" && "rounded-full",
+                        )}
+                        style={
+                          el.shapeKind === "line"
+                            ? {
+                                borderTop: `${Math.max(1, (el.strokeWidthMm || 1) * render.scale * PREVIEW_SCALE)}px solid ${el.strokeColor || "#000"}`,
+                                marginTop: "50%",
+                              }
+                            : {
+                                backgroundColor: el.fillColor || "#e60000",
+                                borderColor: el.strokeColor || el.fillColor || "#e60000",
+                                borderWidth: `${(el.strokeWidthMm || 0) * render.scale * PREVIEW_SCALE}px`,
+                                opacity: el.opacity ?? 1,
+                              }
+                        }
+                      />
+                    ) : el.type === "image" ? (
+                      el.imageDataUrl ? (
+                        <img
+                          src={el.imageDataUrl}
+                          alt={el.imageName || "arte"}
+                          className="h-full w-full"
+                          style={{
+                            objectFit:
+                              el.imageFit === "contain" ? "contain" : el.imageFit === "cover" ? "cover" : "fill",
+                          }}
+                        />
+                      ) : null
+                    ) : el.type === "barcode" ? (
                       <div className="flex h-full w-full items-center justify-center bg-muted/40 text-[9px]">
                         ▮▯▮▯ {blocks[i]?.product?.ean || "EAN"}
                       </div>
                     ) : (
                       <div
                         style={{
-                          fontSize: `${el.fontSize * 0.6}pt`,
+                          fontSize: `${el.fontSize * render.scale * 0.6}pt`,
                           fontWeight: el.bold ? 700 : 400,
                           fontStyle: el.italic ? "italic" : "normal",
                           textAlign: el.align || "left",
@@ -385,7 +466,8 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

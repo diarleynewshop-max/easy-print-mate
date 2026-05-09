@@ -12,7 +12,8 @@ export type A4DynamicKey =
   | "grupo"
   | "estoque";
 
-export type A4ElementType = "text" | "dynamic" | "barcode";
+export type A4ElementType = "text" | "dynamic" | "barcode" | "image" | "shape";
+export type A4ShapeKind = "rect" | "roundRect" | "circle" | "line";
 
 export interface A4Element {
   id: string;
@@ -37,12 +38,23 @@ export interface A4Element {
   // barcode
   barcodeFormat?: "auto" | "CODE128" | "EAN13";
   barcodeDisplayValue?: boolean;
+  // image
+  imageDataUrl?: string;
+  imageName?: string;
+  imageFit?: "contain" | "cover" | "stretch";
+  // shape
+  shapeKind?: A4ShapeKind;
+  fillColor?: string;
+  strokeColor?: string;
+  strokeWidthMm?: number;
+  opacity?: number;
 }
 
 export interface A4Template {
   id: string;
   name: string;
   blocks: A4BlockCount;
+  sourceBlocks?: A4BlockCount;
   // padding interno do bloco (mm)
   paddingMm: number;
   // borda em volta do bloco

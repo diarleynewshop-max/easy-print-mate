@@ -11,6 +11,8 @@
     "build": "vite build",
     "build:app": "vite build",
     "dist:win": "vite build && electron-builder --win --x64",
+    "dist:setup": "vite build && electron-builder --win nsis --x64",
+    "dist:portable": "vite build && electron-builder --win portable --x64",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -79,6 +81,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "build/icon.ico",
       "scripts/print-raw.ps1",
       "package.json"
     ],
@@ -86,8 +89,10 @@
       "scripts/print-raw.ps1"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "target": [
+        "nsis",
         "portable"
       ]
     },
@@ -95,8 +100,12 @@
       "artifactName": "Easy Print Mate Portable.exe"
     },
     "nsis": {
+      "artifactName": "Easy Print Mate Setup.exe",
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Easy Print Mate"
     }
   },
   "devDependencies": {

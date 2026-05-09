@@ -56,3 +56,51 @@ Para abrir usando o build:
 npm run build
 npm run app
 ```
+
+## Gerar instalador para outro PC
+
+O instalador ja leva o app e as dependencias empacotadas. No PC do cliente nao precisa rodar `npm install`.
+
+```bash
+npm install
+npm run dist:win
+```
+
+Arquivos gerados:
+
+```txt
+release\Easy Print Mate Setup.exe
+release\Easy Print Mate Portable.exe
+```
+
+Use `Easy Print Mate Setup.exe` para instalar em outro PC. O app cria automaticamente esta pasta no primeiro uso:
+
+```txt
+...\Documentos\Easy Print Mate
+```
+
+Dentro dela ficam `.env`, `.env.example`, `dados.json`, `prn` e `historico`. O `.env` fica fora do instalador e deve ser preenchido em cada cliente, porque URL, usuario, senha, token e loja podem mudar.
+
+Exemplo do `.env` local:
+
+```txt
+ERP_API_URL_NEWSHOP=
+ERP_API_USERNAME_NEWSHOP=
+ERP_API_PASSWORD_NEWSHOP=
+ERP_API_TOKEN_NEWSHOP=
+ERP_API_LOJA_ID_NEWSHOP=
+```
+
+O historico de impressoes fica separado por data:
+
+```txt
+...\Documentos\Easy Print Mate\historico\2026\01\31\impressoes.csv
+```
+
+Formato do arquivo:
+
+```txt
+Codigo;descrição;preço;quantidade;Nome_usuario
+```
+
+O usuario fica como `padao`.

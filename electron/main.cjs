@@ -8,6 +8,30 @@ const { consultarProduto, loadErpEnv } = require("./varejo-facil.cjs");
 
 const RAW_PRINTER_NAME = process.env.RAW_PRINTER_NAME || "ELGIN L42PRO FULL";
 
+const ERP_ENV_TEMPLATE = [
+  "# Preencha conforme o cliente. Pode usar usuario/senha ou token.",
+  "# O app cria este arquivo em Documentos\\Easy Print Mate e nunca sobrescreve depois.",
+  "",
+  "ERP_API_URL_NEWSHOP=",
+  "ERP_API_USERNAME_NEWSHOP=",
+  "ERP_API_PASSWORD_NEWSHOP=",
+  "ERP_API_TOKEN_NEWSHOP=",
+  "ERP_API_LOJA_ID_NEWSHOP=",
+  "",
+  "ERP_API_URL_SOYE=",
+  "ERP_API_USERNAME_SOYE=",
+  "ERP_API_PASSWORD_SOYE=",
+  "ERP_API_TOKEN_SOYE=",
+  "ERP_API_LOJA_ID_SOYE=",
+  "",
+  "ERP_API_URL_FACIL=",
+  "ERP_API_USERNAME_FACIL=",
+  "ERP_API_PASSWORD_FACIL=",
+  "ERP_API_TOKEN_FACIL=",
+  "ERP_API_LOJA_ID_FACIL=",
+  "",
+].join("\n");
+
 function getDataDir() {
   return path.join(app.getPath("documents"), "Easy Print Mate");
 }
@@ -15,28 +39,13 @@ function getDataDir() {
 function ensureDataDir() {
   const dataDir = getDataDir();
   fs.mkdirSync(dataDir, { recursive: true });
+  const envPath = path.join(dataDir, ".env");
+  if (!fs.existsSync(envPath)) {
+    fs.writeFileSync(envPath, ERP_ENV_TEMPLATE, "utf8");
+  }
   const envExamplePath = path.join(dataDir, ".env.example");
   if (!fs.existsSync(envExamplePath)) {
-    fs.writeFileSync(envExamplePath, [
-      "ERP_API_URL_NEWSHOP=https://newshop.varejofacil.com",
-      "ERP_API_USERNAME_NEWSHOP=",
-      "ERP_API_PASSWORD_NEWSHOP=",
-      "ERP_API_TOKEN_NEWSHOP=",
-      "ERP_API_LOJA_ID_NEWSHOP=2",
-      "",
-      "ERP_API_URL_SOYE=https://soye.varejofacil.com",
-      "ERP_API_USERNAME_SOYE=",
-      "ERP_API_PASSWORD_SOYE=",
-      "ERP_API_TOKEN_SOYE=",
-      "ERP_API_LOJA_ID_SOYE=1",
-      "",
-      "ERP_API_URL_FACIL=https://facil.varejofacil.com",
-      "ERP_API_USERNAME_FACIL=",
-      "ERP_API_PASSWORD_FACIL=",
-      "ERP_API_TOKEN_FACIL=",
-      "ERP_API_LOJA_ID_FACIL=1",
-      "",
-    ].join("\n"), "utf8");
+    fs.writeFileSync(envExamplePath, ERP_ENV_TEMPLATE, "utf8");
   }
   loadErpEnv(dataDir);
 }
@@ -52,14 +61,36 @@ function getPrnDir() {
   return dir;
 }
 
-function getHistoryDir() {
-  const dir = path.join(getDataDir(), "historico");
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function getHistoryDir(at = Date.now()) {
+  const date = new Date(Number(at) || Date.now());
+  const dir = path.join(
+    getDataDir(),
+    "historico",
+    String(date.getFullYear()),
+    pad2(date.getMonth() + 1),
+    pad2(date.getDate()),
+  );
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function getMetricsLogPath() {
-  return path.join(getHistoryDir(), "metricas-impressao.txt");
+function getMetricsLogPath(at = Date.now()) {
+  return path.join(getHistoryDir(at), "impressoes.csv");
+}
+
+async function findPrintLogFiles(dir = path.join(getDataDir(), "historico")) {
+  if (!fs.existsSync(dir)) return [];
+  const entries = await fsp.readdir(dir, { withFileTypes: true });
+  const nested = await Promise.all(entries.map(async (entry) => {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) return findPrintLogFiles(fullPath);
+    return entry.isFile() && entry.name === "impressoes.csv" ? [fullPath] : [];
+  }));
+  return nested.flat();
 }
 
 function readStore() {
@@ -82,6 +113,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 720,
     title: "Easy Print Mate",
+    icon: path.join(__dirname, "..", "build", "icon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -155,56 +187,73 @@ ipcMain.handle("local-data:remove-item", (_event, key) => {
 });
 
 ipcMain.handle("metrics:append-print-event", async (_event, event) => {
-  const filePath = getMetricsLogPath();
-  const header = "data_iso;timestamp;ean;descricao;quantidade;template_id;duracao_ms;status;preco_varejo;preco_atacado;estoque;secao;grupo;codigo_interno\n";
+  const filePath = getMetricsLogPath(event.at);
+  const header = "Codigo;descrição;preço;quantidade;Nome_usuario\n";
   if (!fs.existsSync(filePath)) await fsp.writeFile(filePath, header, "utf8");
   const clean = (value) => String(value ?? "").replace(/[\r\n;]/g, " ").trim();
   const line = [
-    new Date(Number(event.at) || Date.now()).toISOString(),
-    Number(event.at) || Date.now(),
     clean(event.ean),
     clean(event.descricao),
-    Number(event.quantidade) || 0,
-    clean(event.templateId),
-    Number(event.durationMs) || 0,
-    clean(event.status || ""),
     event.precoVarejo ?? "",
-    event.precoAtacado ?? "",
-    event.estoque ?? "",
-    clean(event.secao || ""),
-    clean(event.grupo || ""),
-    clean(event.codigoInterno || ""),
+    Number(event.quantidade) || 0,
+    clean(event.usuario || "padrao"),
   ].join(";") + "\n";
   await fsp.appendFile(filePath, line, "utf8");
   return { ok: true, filePath };
 });
 
 ipcMain.handle("metrics:read-print-events", async () => {
-  const filePath = getMetricsLogPath();
-  if (!fs.existsSync(filePath)) return [];
-  const text = await fsp.readFile(filePath, "utf8");
-  return text
-    .split(/\r?\n/)
-    .slice(1)
-    .filter(Boolean)
-    .map((line) => {
-      const [dataIso, timestamp, ean, descricao, quantidade, templateId, durationMs, status, precoVarejo, precoAtacado, estoque, secao, grupo, codigoInterno] = line.split(";");
-      return {
+  const newLogFiles = await findPrintLogFiles();
+  const oldLogPath = path.join(getDataDir(), "historico", "metricas-impressao.txt");
+  const files = fs.existsSync(oldLogPath) ? [...newLogFiles, oldLogPath] : newLogFiles;
+  const events = [];
+
+  for (const filePath of files) {
+    const text = await fsp.readFile(filePath, "utf8");
+    const isOldLog = path.basename(filePath) === "metricas-impressao.txt";
+    const fileDateMatch = filePath.match(/[\\/]historico[\\/](\d{4})[\\/](\d{2})[\\/](\d{2})[\\/]/);
+    const fileAt = fileDateMatch
+      ? new Date(`${fileDateMatch[1]}-${fileDateMatch[2]}-${fileDateMatch[3]}T00:00:00`).getTime()
+      : Date.now();
+
+    for (const line of text.split(/\r?\n/).slice(1).filter(Boolean)) {
+      const parts = line.split(";");
+      if (isOldLog) {
+        const [dataIso, timestamp, ean, descricao, quantidade, templateId, durationMs, status, precoVarejo, precoAtacado, estoque, secao, grupo, codigoInterno] = parts;
+        events.push({
+          ean: ean || "",
+          descricao: descricao || "",
+          quantidade: Number(quantidade) || 0,
+          templateId: templateId || "",
+          at: Number(timestamp) || Date.parse(dataIso) || Date.now(),
+          durationMs: Number(durationMs) || 0,
+          status: status === "error" ? "error" : "success",
+          precoVarejo: precoVarejo ? Number(precoVarejo) : undefined,
+          precoAtacado: precoAtacado ? Number(precoAtacado) : undefined,
+          estoque: estoque ? Number(estoque) : undefined,
+          secao: secao || undefined,
+          grupo: grupo || undefined,
+          codigoInterno: codigoInterno || undefined,
+        });
+        continue;
+      }
+
+      const [ean, descricao, precoVarejo, quantidade, usuario] = parts;
+      events.push({
         ean: ean || "",
         descricao: descricao || "",
         quantidade: Number(quantidade) || 0,
-        templateId: templateId || "",
-        at: Number(timestamp) || Date.parse(dataIso) || Date.now(),
-        durationMs: Number(durationMs) || 0,
-        status: status === "error" ? "error" : "success",
-        precoVarejo: precoVarejo ? Number(precoVarejo) : undefined,
-        precoAtacado: precoAtacado ? Number(precoAtacado) : undefined,
-        estoque: estoque ? Number(estoque) : undefined,
-        secao: secao || undefined,
-        grupo: grupo || undefined,
-        codigoInterno: codigoInterno || undefined,
-      };
-    });
+        templateId: "",
+        at: fileAt,
+        durationMs: 0,
+        status: "success",
+        precoVarejo: precoVarejo ? Number(String(precoVarejo).replace(",", ".")) : undefined,
+        usuario: usuario || undefined,
+      });
+    }
+  }
+
+  return events.sort((a, b) => b.at - a.at);
 });
 
 ipcMain.handle("print:health", () => ({ ok: true, printerName: RAW_PRINTER_NAME, dataDir: getDataDir() }));
