@@ -1,0 +1,56 @@
+import { Product } from "./label";
+
+export type A4BlockCount = 1 | 2 | 4;
+
+export type A4DynamicKey =
+  | "descricao"
+  | "ean"
+  | "codigoInterno"
+  | "precoVarejo"
+  | "precoAtacado"
+  | "secao"
+  | "grupo"
+  | "estoque";
+
+export type A4ElementType = "text" | "dynamic" | "barcode";
+
+export interface A4Element {
+  id: string;
+  type: A4ElementType;
+  // posição dentro do bloco, em mm
+  x: number;
+  y: number;
+  widthMm: number;
+  heightMm: number;
+  // texto fixo (type=text) ou prefixo (type=dynamic)
+  text?: string;
+  prefix?: string;
+  // para dynamic
+  field?: A4DynamicKey;
+  // tipografia
+  fontSize: number; // pt
+  fontFamily?: "helvetica" | "times" | "courier";
+  bold?: boolean;
+  italic?: boolean;
+  align?: "left" | "center" | "right";
+  color?: string;
+  // barcode
+  barcodeFormat?: "auto" | "CODE128" | "EAN13";
+  barcodeDisplayValue?: boolean;
+}
+
+export interface A4Template {
+  id: string;
+  name: string;
+  blocks: A4BlockCount;
+  // padding interno do bloco (mm)
+  paddingMm: number;
+  // borda em volta do bloco
+  showBorder?: boolean;
+  // elementos dentro do bloco (mesmo layout repetido em todos os blocos)
+  elements: A4Element[];
+}
+
+export interface A4FilledBlock {
+  product: Product | null;
+}
