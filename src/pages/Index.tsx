@@ -12,6 +12,7 @@ import { LabelPreview } from "@/components/LabelPreview";
 import { LabelEditor } from "@/components/LabelEditor";
 import { ApiConfig } from "@/components/ApiConfig";
 import { Metrics } from "@/components/Metrics";
+import { A4Module } from "@/components/A4Module";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -34,10 +35,11 @@ import {
   Minus,
   AlertTriangle,
   CheckCircle2,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type View = "scan" | "editor" | "config" | "metrics";
+type View = "scan" | "editor" | "config" | "metrics" | "a4";
 
 const Index = () => {
   const inputRef = useRef<HTMLInputElement>(null);
