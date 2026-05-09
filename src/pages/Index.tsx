@@ -275,6 +275,7 @@ const Index = () => {
         <nav className="p-2 space-y-1">
           <NavBtn icon={<Tag />} label="Bipar / Imprimir" active={view === "scan"} onClick={() => { setView("scan"); focusInput(); }} />
           <NavBtn icon={<Pencil />} label="Editor de etiqueta" active={view === "editor"} onClick={() => setView("editor")} />
+          <NavBtn icon={<FileText />} label="Etiquetas A4 / PDF" active={view === "a4"} onClick={() => setView("a4")} />
           <NavBtn icon={<BarChart3 />} label="Métricas" active={view === "metrics"} onClick={() => setView("metrics")} />
           <NavBtn icon={<Settings />} label="Configuração API" active={view === "config"} onClick={() => setView("config")} />
         </nav>
