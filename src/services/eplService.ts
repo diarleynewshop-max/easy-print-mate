@@ -78,7 +78,7 @@ function safeWidthMm(template: LabelTemplate) {
 // Auto narrow: try to fit barcode within available width
 function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: string) {
   if (field.barcodeNarrow && field.barcodeNarrow > 0) return field.barcodeNarrow;
-  if (field.barcodeBarWidth && field.barcodeBarWidth > 0) return Math.round(field.barcodeBarWidth);
+  if (field.barcodeBarWidth && field.barcodeBarWidth > 0) return Math.max(1, Math.round(field.barcodeBarWidth * DOTS_PER_MM));
   const availableMm = field.widthMm ?? safeWidthMm(template);
   const availableDots = mmToDots(availableMm);
   const len = payload.length || 13;
@@ -88,9 +88,41 @@ function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: 
   return Math.min(narrow, 4);
 }
 
-function eplBarcodeType(_field: LabelField, payload: string) {
-  if (!/^\d+$/.test(payload)) return "1";
-  return "E30";
+function eplBarcodeType(field: LabelField, payload: string) {
+  const digitsOnly = /^\d+$/.test(payload);
+  const requested = field.barcodeFormat || "auto";
+  if (requested === "CODE128") return "1";
+  if (requested === "EAN13") return "E30";
+  if (requested === "EAN8") return "E80";
+  if (requested === "UPC") return "UA0";
+  if (requested === "ITF14") return "2";
+  if (!digitsOnly) return "1";
+  if (payload.length === 8) return "E80";
+  if (payload.length === 12) return "UA0";
+  if (payload.length === 13) return "E30";
+  if (payload.length === 14) return "2";
+  return "1";
+}
+
+function getColumnIndices(template: LabelTemplate, total: number) {
+  const base = Array.from({ length: total }, (_, index) => index);
+  return template.columnOrder === "rtl" ? base.reverse() : base;
+}
+
+function getFieldPosition(template: LabelTemplate, field: LabelField, offsetXmm: number) {
+  const rotation = template.printRotation ?? 0;
+  const fieldWidthMm = field.widthMm ?? 0;
+  const fieldHeightMm = field.heightMm ?? (field.key === "barcode" ? 8 : 5);
+  if (rotation === 180) {
+    const x = offsetXmm + (template.widthMm - field.x - fieldWidthMm);
+    const y = (template.marginTopMm ?? 0) + (template.heightMm - field.y - fieldHeightMm);
+    return { x: mmToDots(x), y: mmToDots(y), rotation: 2 as const };
+  }
+  return {
+    x: mmToDots(offsetXmm + field.x),
+    y: mmToDots((template.marginTopMm ?? 0) + field.y),
+    rotation: 0 as const,
+  };
 }
 
 export function buildEplPrn(template: LabelTemplate, product: Product, copies: number) {
@@ -123,14 +155,14 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
     "N",
   ];
 
-  Array.from({ length: labelsInRow }).forEach((_, col) => {
-    const offsetX = marginLeftMm + col * (template.widthMm + columnGapMm);
+  const columnIndices = getColumnIndices(template, labelsInRow);
+  columnIndices.forEach((actualColumn) => {
+    const offsetX = marginLeftMm + actualColumn * (template.widthMm + columnGapMm);
 
     template.fields
       .filter((field) => field.visible)
       .forEach((field) => {
-        const x = mmToDots(offsetX + field.x);
-        const y = mmToDots(marginTopMm + field.y);
+        const { x, y, rotation } = getFieldPosition(template, field, offsetX);
 
         if (field.key === "barcode") {
           const barcode = cleanText(product.codigo_barras || product.ean);
@@ -138,14 +170,14 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
           const narrow = autoBarcodeNarrow(field, template, barcode);
           const wide = Math.max(2, Math.min(4, field.barcodeWideRatio ?? 3));
           const printText = field.barcodeDisplayValue === false ? "N" : "B";
-          lines.push(`B${x},${y},0,${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field)},${printText},"${barcode}"`);
+          lines.push(`B${x},${y},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field)},${printText},"${barcode}"`);
           return;
         }
 
         const value = cleanText(fieldValue(field, product));
         if (!value) return;
         const { font, h, w } = textFont(field);
-        lines.push(`A${x},${y},0,${font},${h},${w},N,"${value}"`);
+        lines.push(`A${x},${y},${rotation},${font},${h},${w},N,"${value}"`);
       });
   });
 
@@ -189,8 +221,7 @@ function appendProductFields(lines: string[], template: LabelTemplate, product: 
   template.fields
     .filter((field) => field.visible)
     .forEach((field) => {
-      const x = mmToDots(xOffsetMm + field.x);
-      const y = mmToDots((template.marginTopMm ?? 0) + field.y);
+      const { x, y, rotation } = getFieldPosition(template, field, xOffsetMm);
 
       if (field.key === "barcode") {
         const barcode = cleanText(product.codigo_barras || product.ean);
@@ -198,14 +229,14 @@ function appendProductFields(lines: string[], template: LabelTemplate, product: 
         const narrow = autoBarcodeNarrow(field, template, barcode);
         const wide = Math.max(2, Math.min(4, field.barcodeWideRatio ?? 3));
         const printText = field.barcodeDisplayValue === false ? "N" : "B";
-        lines.push(`B${x},${y},0,${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field)},${printText},"${barcode}"`);
+        lines.push(`B${x},${y},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field)},${printText},"${barcode}"`);
         return;
       }
 
       const value = cleanText(fieldValue(field, product));
       if (!value) return;
       const { font, h, w } = textFont(field);
-      lines.push(`A${x},${y},0,${font},${h},${w},N,"${value}"`);
+      lines.push(`A${x},${y},${rotation},${font},${h},${w},N,"${value}"`);
     });
 }
 
@@ -220,8 +251,11 @@ export function buildEplBatchPrn(template: LabelTemplate, queue: PrintQueueItem[
 
   for (let start = 0; start < expanded.length; start += columns) {
     const lines = [...pageLines];
-    expanded.slice(start, start + columns).forEach((product, col) => {
-      const offsetX = marginLeftMm + col * (template.widthMm + columnGapMm);
+    const rowItems = expanded.slice(start, start + columns);
+    const columnIndices = getColumnIndices(template, rowItems.length);
+    rowItems.forEach((product, index) => {
+      const actualColumn = columnIndices[index];
+      const offsetX = marginLeftMm + actualColumn * (template.widthMm + columnGapMm);
       appendProductFields(lines, template, product, offsetX);
     });
     lines.push("P1");

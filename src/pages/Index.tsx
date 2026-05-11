@@ -60,7 +60,6 @@ const Index = () => {
   const [printers, setPrinters] = useState<Array<{ name: string; isDefault?: boolean; isOffline?: boolean }>>([]);
 
   const [config, setConfig] = useState<VFConfig>(() => storage.getConfig());
-  const printerStatus = usePrintServerStatus(config.labelPrinterName, 8000);
   const [history, setHistory] = useState<HistoryEntry[]>(() => storage.getHistory());
   const [templates, setTemplates] = useState<LabelTemplate[]>(() => {
     const t = storage.getTemplates();
@@ -69,14 +68,18 @@ const Index = () => {
     return d;
   });
   const [activeTemplateId, setActiveTemplateId] = useState<string>(() => {
-    storage.setActiveTemplateId(ELGIN_PRESET_ID);
-    return ELGIN_PRESET_ID;
+    return storage.getActiveTemplateId() || ELGIN_PRESET_ID;
   });
 
   const activeTemplate = useMemo(
     () => templates.find((t) => t.id === activeTemplateId) || templates[0],
     [templates, activeTemplateId],
   );
+  const templateChoices = useMemo(
+    () => templates.map((template) => ({ id: template.id, label: template.category || template.name })),
+    [templates],
+  );
+  const printerStatus = usePrintServerStatus(activeTemplate?.preferredPrinterName || config.labelPrinterName, 8000);
 
   const issues = useMemo(() => validateTemplate(activeTemplate), [activeTemplate]);
   const hasErrors = issues.some((i) => i.level === "error");
@@ -90,6 +93,18 @@ const Index = () => {
   useEffect(() => {
     document.title = "Easy Print Mate - Elgin L42PRO";
   }, []);
+
+  useEffect(() => {
+    if (!activeTemplate) return;
+    storage.setActiveTemplateId(activeTemplate.id);
+    if (!activeTemplate.preferredPrinterName) return;
+    setConfig((current) => {
+      if (current.labelPrinterName === activeTemplate.preferredPrinterName) return current;
+      const next = { ...current, labelPrinterName: activeTemplate.preferredPrinterName };
+      storage.saveConfig(next);
+      return next;
+    });
+  }, [activeTemplate]);
 
   useEffect(() => {
     if (!window.easyPrint?.isDesktop) return;
@@ -160,7 +175,7 @@ const Index = () => {
 
   const sendRaw = async (content: string, label: string) => {
     try {
-      const printerName = config.labelPrinterName || "ELGIN L42PRO FULL";
+      const printerName = activeTemplate?.preferredPrinterName || config.labelPrinterName || "ELGIN L42PRO FULL";
       await printService.printRawPrn(content, printerName);
       toast.success(`${label} enviado para ${printerName}`);
       setScanState("sent");
@@ -177,7 +192,6 @@ const Index = () => {
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
     if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
     const usuario = requestPrintUserName();
-    if (usuario === null) return;
     const ok = await sendRaw(buildEplPrn(activeTemplate, product, copies), `${copies} etiqueta(s)`);
     recordEvent(product, copies, ok ? "success" : "error", usuario);
     if (ok) {
@@ -229,7 +243,6 @@ const Index = () => {
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
     if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
     const usuario = requestPrintUserName();
-    if (usuario === null) return;
     const ok = await sendRaw(buildEplBatchPrn(activeTemplate, printQueue), `Fila com ${queueTotal} etiqueta(s)`);
     printQueue.forEach((item) => recordEvent(item.product, item.quantity, ok ? "success" : "error", usuario));
     if (ok) {
@@ -245,20 +258,19 @@ const Index = () => {
     if (!p) return toast.error("Nenhuma impressao anterior");
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
     const usuario = requestPrintUserName();
-    if (usuario === null) return;
     const ok = await sendRaw(buildEplPrn(activeTemplate, p, copies), "Reimpressao");
     recordEvent(p, copies, ok ? "success" : "error", usuario);
   };
 
   const handleTestPrint = async () => {
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
-    if (requestPrintUserName() === null) return;
+    requestPrintUserName();
     await sendRaw(buildTestPrn(activeTemplate), "Etiqueta de teste");
   };
 
   const handleCalibration = async () => {
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
-    if (requestPrintUserName() === null) return;
+    requestPrintUserName();
     await sendRaw(buildCalibrationPrn(activeTemplate), "Calibracao");
   };
 
@@ -401,6 +413,38 @@ const Index = () => {
                 loading={loading}
               />
 
+              <div className="rounded-lg border bg-card p-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Tipo de etiqueta
+                    </label>
+                    <select
+                      className="h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      value={activeTemplateId}
+                      onChange={(e) => setActiveTemplateId(e.target.value)}
+                    >
+                      {templateChoices.map((template) => (
+                        <option key={template.id} value={template.id}>{template.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Quantidade
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      className="h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      value={copies}
+                      onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <ScanStateBar state={scanState} loading={loading} />
 
               <div className="rounded-lg border bg-card p-4">
@@ -482,7 +526,14 @@ const Index = () => {
                     <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setCopies((c) => Math.max(1, c - 1))}>
                       <Minus className="h-4 w-4" />
                     </Button>
-                    <div className="flex-1 text-center text-2xl font-bold tabular-nums">{copies}</div>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      className="h-9 flex-1 rounded-md border bg-background px-3 text-center text-2xl font-bold tabular-nums"
+                      value={copies}
+                      onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
+                    />
                     <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setCopies((c) => c + 1)}>
                       <Plus className="h-4 w-4" />
                     </Button>
@@ -607,6 +658,7 @@ const Index = () => {
             <LabelEditor
               templates={templates}
               activeId={activeTemplateId}
+              printers={printers}
               onChange={(t, id) => { setTemplates(t); setActiveTemplateId(id); }}
             />
           </div>

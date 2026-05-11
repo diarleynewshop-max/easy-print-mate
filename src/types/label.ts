@@ -58,6 +58,7 @@ export interface LabelField {
 export interface LabelTemplate {
   id: string;
   name: string;
+  category?: string;
   widthMm: number;
   heightMm: number;
   marginMm: number;
@@ -74,6 +75,9 @@ export interface LabelTemplate {
   safePaddingRightMm?: number;
   safePaddingTopMm?: number;
   safePaddingBottomMm?: number;
+  preferredPrinterName?: string;
+  printRotation?: 0 | 180;
+  columnOrder?: "ltr" | "rtl";
   fontFamily: string;
   fields: LabelField[];
 }

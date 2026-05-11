@@ -303,15 +303,20 @@ ipcMain.handle("erp:fetch-product", async (_event, config, codigo) => {
 
 ipcMain.handle("print:raw-prn", async (_event, content, printerName = RAW_PRINTER_NAME) => {
   if (!content) throw new Error("Conteudo PRN vazio");
-  const filePath = path.join(os.tmpdir(), `easy-print-${Date.now()}.prn`);
-  await fsp.writeFile(filePath, content, "ascii");
+  const selectedPrinter = String(printerName || RAW_PRINTER_NAME).trim() || RAW_PRINTER_NAME;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const savedPath = path.join(getPrnDir(), `etiqueta-${stamp}.prn`);
+  const tempPath = path.join(os.tmpdir(), `easy-print-${Date.now()}.prn`);
+  await fsp.writeFile(savedPath, content, "ascii");
+  await fsp.writeFile(tempPath, content, "ascii");
   try {
-    await runPowerShellPrint(filePath, printerName);
-    const savedPath = path.join(getPrnDir(), `etiqueta-${new Date().toISOString().replace(/[:.]/g, "-")}.prn`);
-    await fsp.writeFile(savedPath, content, "ascii");
-    return { ok: true, printerName, savedPath };
+    await runPowerShellPrint(tempPath, selectedPrinter);
+    return { ok: true, printerName: selectedPrinter, savedPath };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha desconhecida ao imprimir";
+    throw new Error(`Falha ao imprimir em ${selectedPrinter}. PRN salvo em ${savedPath}. ${message}`);
   } finally {
-    await fsp.rm(filePath, { force: true });
+    await fsp.rm(tempPath, { force: true });
   }
 });
 

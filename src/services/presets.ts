@@ -6,6 +6,7 @@ export function elginPreset(): LabelTemplate {
   return {
     id: ELGIN_PRESET_ID,
     name: "Elgin L42PRO 3 colunas 28x14",
+    category: "Etiqueta branca",
     widthMm: 28,
     heightMm: 13.5,
     marginMm: 0,
@@ -21,6 +22,8 @@ export function elginPreset(): LabelTemplate {
     safePaddingRightMm: 2,
     safePaddingTopMm: 1,
     safePaddingBottomMm: 1,
+    printRotation: 0,
+    columnOrder: "ltr",
     fontFamily: "Arial, sans-serif",
     fields: [
       {

@@ -171,6 +171,7 @@ function SingleLabel({
   const canvasRef = useRef<HTMLDivElement>(null);
   const measure = (mm: number) => (forPrint ? `${mm}mm` : `${mm * MM_TO_PX}px`);
   const visibleFields = template.fields.filter((f) => f.visible);
+  const previewRotation = !editable && (template.printRotation ?? 0) === 180 ? "rotate(180deg)" : undefined;
   const barcodeField = template.fields.find((f) => f.key === "barcode");
   const barcodeRef = useBarcode(
     product?.codigo_barras || product?.ean || "7891234567890",
@@ -240,75 +241,85 @@ function SingleLabel({
         boxShadow: editable ? "0 18px 50px rgba(15, 23, 42, .16)" : undefined,
       }}
     >
-      {visibleFields
-        .map((f) => {
-          const { widthMm, heightMm } = getSafeFieldSize(template, f, visibleFields);
-          const selected = editable && selectedField === f.key;
-          const commonStyle: React.CSSProperties = {
-            position: "absolute",
-            left: measure(f.x),
-            top: measure(f.y),
-            width: measure(widthMm),
-            height: measure(heightMm),
-            outline: selected ? "1.5px solid #2563eb" : editable ? "1px dashed rgba(37,99,235,.25)" : "none",
-            cursor: editable ? "move" : "default",
-            boxSizing: "border-box",
-            overflow: "hidden",
-          };
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          height: "100%",
+          transform: previewRotation,
+          transformOrigin: "center center",
+        }}
+      >
+        {visibleFields
+          .map((f) => {
+            const { widthMm, heightMm } = getSafeFieldSize(template, f, visibleFields);
+            const selected = editable && selectedField === f.key;
+            const commonStyle: React.CSSProperties = {
+              position: "absolute",
+              left: measure(f.x),
+              top: measure(f.y),
+              width: measure(widthMm),
+              height: measure(heightMm),
+              outline: selected ? "1.5px solid #2563eb" : editable ? "1px dashed rgba(37,99,235,.25)" : "none",
+              cursor: editable ? "move" : "default",
+              boxSizing: "border-box",
+              overflow: "hidden",
+            };
 
-          return (
-            <div
-              key={f.key}
-              style={commonStyle}
-              onPointerDown={(event) => startPointerEdit(event, f, "move")}
-              onClick={() => onSelectField?.(f.key)}
-            >
-              {f.key === "barcode" ? (
-                <svg ref={barcodeRef} style={{ width: "100%", height: "100%", display: "block" }} />
-              ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    fontSize: `${f.fontSize}pt`,
-                    fontFamily: f.fontFamily || template.fontFamily,
-                    fontWeight: f.bold ? 700 : 400,
-                    color: f.color || "#000000",
-                    textAlign: f.align || "left",
-                    lineHeight: 1.05,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {f.label ? `${f.label} ` : ""}
-                  {getValue(f.key, product, f)}
-                </div>
-              )}
+            return (
+              <div
+                key={f.key}
+                style={commonStyle}
+                onPointerDown={(event) => startPointerEdit(event, f, "move")}
+                onClick={() => onSelectField?.(f.key)}
+              >
+                {f.key === "barcode" ? (
+                  <svg ref={barcodeRef} style={{ width: "100%", height: "100%", display: "block" }} />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      fontSize: `${f.fontSize}pt`,
+                      fontFamily: f.fontFamily || template.fontFamily,
+                      fontWeight: f.bold ? 700 : 400,
+                      color: f.color || "#000000",
+                      textAlign: f.align || "left",
+                      lineHeight: 1.05,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {f.label ? `${f.label} ` : ""}
+                    {getValue(f.key, product, f)}
+                  </div>
+                )}
 
-              {editable && selected && (
-                <button
-                  type="button"
-                  aria-label="Redimensionar campo"
-                  onPointerDown={(event) => startPointerEdit(event, f, "resize")}
-                  style={{
-                    position: "absolute",
-                    right: -5,
-                    bottom: -5,
-                    width: 10,
-                    height: 10,
-                    borderRadius: 2,
-                    border: "1px solid #fff",
-                    background: "#2563eb",
-                    cursor: "nwse-resize",
-                    padding: 0,
-                  }}
-                />
-              )}
-            </div>
-          );
-        })}
+                {editable && selected && (
+                  <button
+                    type="button"
+                    aria-label="Redimensionar campo"
+                    onPointerDown={(event) => startPointerEdit(event, f, "resize")}
+                    style={{
+                      position: "absolute",
+                      right: -5,
+                      bottom: -5,
+                      width: 10,
+                      height: 10,
+                      borderRadius: 2,
+                      border: "1px solid #fff",
+                      background: "#2563eb",
+                      cursor: "nwse-resize",
+                      padding: 0,
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
+      </div>
     </div>
   );
 }

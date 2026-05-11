@@ -155,7 +155,6 @@ export function A4Module({ config }: Props) {
     if (!active) return;
     if (!hasAnyProduct) return toast.error("Bipe pelo menos um produto");
     const usuario = requestPrintUserName();
-    if (usuario === null) return;
     if (config.a4PrinterName) {
       toast.info(`No dialogo do Windows, escolha a impressora A4: ${config.a4PrinterName}`);
     }

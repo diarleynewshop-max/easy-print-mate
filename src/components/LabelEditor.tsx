@@ -105,6 +105,7 @@ const SHEET_PRESETS = [
 interface Props {
   templates: LabelTemplate[];
   activeId: string;
+  printers?: Array<{ name: string; isDefault?: boolean; isOffline?: boolean }>;
   onChange: (templates: LabelTemplate[], activeId: string) => void;
 }
 
@@ -128,6 +129,10 @@ function normalizeTemplate(template: LabelTemplate): LabelTemplate {
     safePaddingRightMm: template.safePaddingRightMm ?? 1,
     safePaddingTopMm: template.safePaddingTopMm ?? 1,
     safePaddingBottomMm: template.safePaddingBottomMm ?? 1,
+    category: template.category ?? "",
+    preferredPrinterName: template.preferredPrinterName ?? "",
+    printRotation: template.printRotation ?? 0,
+    columnOrder: template.columnOrder ?? "ltr",
     fields: template.fields.map((field) => {
       const normalized: LabelField = {
         ...field,
@@ -289,7 +294,7 @@ function Section({
   );
 }
 
-export function LabelEditor({ templates, activeId, onChange }: Props) {
+export function LabelEditor({ templates, activeId, printers = [], onChange }: Props) {
   const [local, setLocal] = useState<LabelTemplate[]>(templates.map(normalizeTemplate));
   const [currentId, setCurrentId] = useState(activeId);
   const [selectedField, setSelectedField] = useState<LabelFieldKey | null>("barcode");
@@ -661,6 +666,16 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
               <Input className="h-8 text-xs" value={current.name} onChange={(e) => update({ name: e.target.value })} />
             </div>
 
+            <div className="space-y-1">
+              <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Tipo de etiqueta</Label>
+              <Input
+                className="h-8 text-xs"
+                value={current.category || ""}
+                placeholder="Ex.: Etiqueta Anel"
+                onChange={(e) => update({ category: e.target.value })}
+              />
+            </div>
+
             <div>
               <Label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 Tamanhos rápidos
@@ -690,6 +705,21 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
             </div>
 
             <FontControl label="Fonte padrão" value={current.fontFamily} onChange={(value) => update({ fontFamily: value })} />
+            <div className="space-y-1">
+              <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Impressora preferida</Label>
+              <select
+                className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                value={current.preferredPrinterName || ""}
+                onChange={(e) => update({ preferredPrinterName: e.target.value })}
+              >
+                <option value="">Usar a impressora atual da tela</option>
+                {printers.map((printer) => (
+                  <option key={printer.name} value={printer.name}>
+                    {printer.name}{printer.isDefault ? " (padrao)" : ""}{printer.isOffline ? " [offline]" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
           </Section>
 
           <Section icon={LayoutGrid} title="Folha & Colunas">
@@ -740,6 +770,27 @@ export function LabelEditor({ templates, activeId, onChange }: Props) {
                     : current.columnGapMm;
                   update({ columns: nextCols, columnGapMm: Number((gap ?? 0).toFixed(2)) });
                 }}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <SelectControl
+                label="Primeira coluna"
+                value={current.columnOrder || "ltr"}
+                options={[
+                  { value: "ltr", label: "Esquerda -> direita" },
+                  { value: "rtl", label: "Direita -> esquerda" },
+                ]}
+                onChange={(value) => update({ columnOrder: value as LabelTemplate["columnOrder"] })}
+              />
+              <SelectControl
+                label="Rotacao"
+                value={String(current.printRotation ?? 0)}
+                options={[
+                  { value: "0", label: "Normal" },
+                  { value: "180", label: "Cabeca para baixo" },
+                ]}
+                onChange={(value) => update({ printRotation: Number(value) as LabelTemplate["printRotation"] })}
               />
             </div>
 
