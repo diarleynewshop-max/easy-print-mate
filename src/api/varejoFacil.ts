@@ -38,7 +38,7 @@ export async function fetchProductByEan(cfg: VFConfig, ean: string, signal?: Abo
   }
 
   const params = new URLSearchParams({ codigo: code });
-  if (cfg.empresa) params.set("empresa", cfg.empresa);
+  if (cfg.companyName || cfg.empresa) params.set("empresa", cfg.companyName || cfg.empresa || "");
   if (cfg.loja) params.set("loja", cfg.loja);
 
   let response: Response;

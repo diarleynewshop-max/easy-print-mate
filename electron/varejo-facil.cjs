@@ -38,9 +38,8 @@ function loadErpEnv(dataDir) {
 
 function normalizeEmpresa(value) {
   const normalized = String(value || "").trim().toUpperCase();
-  if (normalized.includes("SOYE")) return "SOYE";
-  if (normalized.includes("FACIL")) return "FACIL";
-  return "NEWSHOP";
+  if (!normalized) return "NEWSHOP";
+  return normalized.replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "NEWSHOP";
 }
 
 function getEnv(empresa, key) {
@@ -54,7 +53,9 @@ function getEnv(empresa, key) {
 }
 
 function resolveBaseUrl(empresa, configuredBaseUrl) {
-  const configuredUrl = (configuredBaseUrl || getEnv(empresa, "URL") || `https://${HOSTS[empresa]}`).replace(/\/$/, "");
+  const baseCandidate = configuredBaseUrl || getEnv(empresa, "URL") || (HOSTS[empresa] ? `https://${HOSTS[empresa]}` : "");
+  if (!baseCandidate) throw new Error(`URL da API nao configurada para ${empresa}.`);
+  const configuredUrl = String(baseCandidate).replace(/\/$/, "");
   return configuredUrl.endsWith("/api") ? configuredUrl : `${configuredUrl}/api`;
 }
 
@@ -62,9 +63,9 @@ function resolveTokenFromAuth(data) {
   return data?.accessToken || data?.access_token || data?.token || data?.jwt || "";
 }
 
-async function getAccessToken(empresa, baseUrl, configuredToken) {
-  const username = getEnv(empresa, "USERNAME");
-  const password = getEnv(empresa, "PASSWORD");
+async function getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword) {
+  const username = configuredUsername || getEnv(empresa, "USERNAME");
+  const password = configuredPassword || getEnv(empresa, "PASSWORD");
   const tokenFromEnv = getEnv(empresa, "TOKEN");
   const cacheKey = `${empresa}:${baseUrl}:${username}`;
   const cachedToken = tokenCache.get(cacheKey);
@@ -214,15 +215,15 @@ async function buscarGrupo(baseUrl, token, secaoId, grupoId, debug) {
   return result.response.ok ? result.data?.descricao || "" : "";
 }
 
-async function consultarProduto({ codigo, empresa: empresaInput, loja, baseUrl: configuredBaseUrl, token: configuredToken }) {
-  const empresa = normalizeEmpresa(empresaInput);
+async function consultarProduto({ codigo, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
+  const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
   const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
   const lojaId = lojaParam ? Number(lojaParam) : undefined;
   const debug = [{ step: "entrada", path: "electron:varejo-facil", message: `empresa=${empresa}; codigo=${codigo}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}` }];
 
-  const token = await getAccessToken(empresa, baseUrl, configuredToken);
-  const username = getEnv(empresa, "USERNAME");
+  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
+  const username = configuredUsername || getEnv(empresa, "USERNAME");
   const cacheKey = `${empresa}:${baseUrl}:${username}`;
   debug.push({ step: "auth", path: `${baseUrl}/auth`, found: true, message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}` });
 

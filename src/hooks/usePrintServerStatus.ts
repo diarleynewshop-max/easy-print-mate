@@ -4,11 +4,11 @@ export type PrintServerStatus = "online" | "offline" | "checking";
 
 const SERVER_URL = "http://127.0.0.1:8787";
 
-export async function pingPrintServer(): Promise<boolean> {
+export async function pingPrintServer(printerName?: string): Promise<boolean> {
   if (window.easyPrint?.isDesktop) {
     try {
-      const res = await window.easyPrint.printHealth();
-      return Boolean(res.ok);
+      const res = await window.easyPrint.printHealth(printerName);
+      return Boolean(res.ok && res.printerFound);
     } catch {
       return false;
     }
@@ -25,13 +25,13 @@ export async function pingPrintServer(): Promise<boolean> {
   }
 }
 
-export function usePrintServerStatus(intervalMs = 10000) {
+export function usePrintServerStatus(printerName?: string, intervalMs = 10000) {
   const [status, setStatus] = useState<PrintServerStatus>("checking");
 
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
-      const ok = await pingPrintServer();
+      const ok = await pingPrintServer(printerName);
       if (!cancelled) setStatus(ok ? "online" : "offline");
     };
     check();
@@ -40,7 +40,7 @@ export function usePrintServerStatus(intervalMs = 10000) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [intervalMs]);
+  }, [intervalMs, printerName]);
 
   return status;
 }

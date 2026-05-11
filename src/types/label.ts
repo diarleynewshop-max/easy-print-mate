@@ -79,10 +79,15 @@ export interface LabelTemplate {
 }
 
 export interface VFConfig {
+  companyName: string;
   baseUrl: string;
+  username: string;
+  password: string;
   token: string;
-  empresa: string;
   loja: string;
+  empresa?: string;
+  labelPrinterName?: string;
+  a4PrinterName?: string;
 }
 
 export interface HistoryEntry {

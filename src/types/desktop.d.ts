@@ -1,6 +1,7 @@
 interface EasyPrintBridge {
   isDesktop: boolean;
   getInfo(): Promise<{ dataDir: string; storePath: string; metricsLogPath?: string; printerName: string }>;
+  listPrinters(): Promise<Array<{ name: string; isDefault?: boolean; status?: number; isOffline?: boolean }>>;
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<boolean>;
   removeItem(key: string): Promise<boolean>;
@@ -13,7 +14,7 @@ interface EasyPrintBridge {
     debug?: unknown;
   }>;
   printRawPrn(content: string, printerName?: string): Promise<{ ok: boolean; printerName: string; savedPath?: string }>;
-  printHealth(): Promise<{ ok: boolean; printerName: string; dataDir: string }>;
+  printHealth(printerName?: string): Promise<{ ok: boolean; printerName: string; dataDir: string; printerFound: boolean }>;
 }
 
 interface Window {

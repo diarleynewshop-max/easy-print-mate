@@ -128,6 +128,22 @@ function createWindow() {
   }
 }
 
+async function listInstalledPrinters() {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  if (!win) return [];
+  try {
+    const printers = await win.webContents.getPrintersAsync();
+    return printers.map((printer) => ({
+      name: printer.name,
+      isDefault: Boolean(printer.isDefault),
+      status: printer.status,
+      isOffline: printer.status === 7,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 function runPowerShellPrint(filePath, printerName) {
   return new Promise((resolve, reject) => {
     const scriptPath = app.isPackaged
@@ -166,6 +182,8 @@ ipcMain.handle("local-data:get-info", () => ({
   metricsLogPath: getMetricsLogPath(),
   printerName: RAW_PRINTER_NAME,
 }));
+
+ipcMain.handle("printer:list", async () => listInstalledPrinters());
 
 ipcMain.handle("local-data:get-item", (_event, key) => {
   const store = readStore();
@@ -256,7 +274,12 @@ ipcMain.handle("metrics:read-print-events", async () => {
   return events.sort((a, b) => b.at - a.at);
 });
 
-ipcMain.handle("print:health", () => ({ ok: true, printerName: RAW_PRINTER_NAME, dataDir: getDataDir() }));
+ipcMain.handle("print:health", async (_event, printerName = RAW_PRINTER_NAME) => {
+  const printers = await listInstalledPrinters();
+  const selected = String(printerName || RAW_PRINTER_NAME).trim();
+  const printerFound = printers.some((printer) => printer.name === selected);
+  return { ok: printerFound, printerName: selected, dataDir: getDataDir(), printerFound };
+});
 
 ipcMain.handle("erp:fetch-product", async (_event, config, codigo) => {
   const code = String(codigo || "").trim();

@@ -86,9 +86,22 @@ export const storage = {
   getConfig(): VFConfig {
     try {
       const raw = readLocal(K.config);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<VFConfig> & { empresa?: string };
+        return {
+          companyName: parsed.companyName || parsed.empresa || "",
+          baseUrl: parsed.baseUrl || "",
+          username: parsed.username || "",
+          password: parsed.password || "",
+          token: parsed.token || "",
+          loja: parsed.loja || "",
+          empresa: parsed.empresa,
+          labelPrinterName: parsed.labelPrinterName || "",
+          a4PrinterName: parsed.a4PrinterName || "",
+        };
+      }
     } catch {}
-    return { baseUrl: "", token: "", empresa: "NEWSHOP", loja: "" };
+    return { companyName: "", baseUrl: "", username: "", password: "", token: "", loja: "", labelPrinterName: "", a4PrinterName: "" };
   },
   saveConfig(cfg: VFConfig) {
     writeLocal(K.config, JSON.stringify(cfg));
