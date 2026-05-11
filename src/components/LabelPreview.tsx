@@ -171,7 +171,10 @@ function SingleLabel({
   const canvasRef = useRef<HTMLDivElement>(null);
   const measure = (mm: number) => (forPrint ? `${mm}mm` : `${mm * MM_TO_PX}px`);
   const visibleFields = template.fields.filter((f) => f.visible);
-  const previewRotation = !editable && (template.printRotation ?? 0) === 180 ? "rotate(180deg)" : undefined;
+  // Rotation is handled at the printer level (EPL) — never rotate the
+  // browser/PDF preview so what is printed matches exactly what the user sees
+  // in the editor (fixes "Anel" template printing upside down).
+  const previewRotation: string | undefined = undefined;
   const barcodeField = template.fields.find((f) => f.key === "barcode");
   const barcodeRef = useBarcode(
     product?.codigo_barras || product?.ean || "7891234567890",
