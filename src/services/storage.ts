@@ -1,5 +1,5 @@
 import { LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
-import { elginPreset, ELGIN_PRESET_ID } from "./presets";
+import { elginPreset, ELGIN_PRESET_ID, anelPreset, ANEL_PRESET_ID, amarelaPreset, AMARELA_PRESET_ID } from "./presets";
 
 const K = {
   templates: "vf_label_templates",
@@ -143,15 +143,22 @@ export const storage = {
   },
 };
 
-export function ensureDefaultTemplates(templates: LabelTemplate[]) {
-  return defaultTemplates();
+export function ensureDefaultTemplates(templates: LabelTemplate[]): LabelTemplate[] {
+  let result = [...templates];
+  if (!result.some((t) => t.id === ELGIN_PRESET_ID))   result = [elginPreset(), ...result];
+  if (!result.some((t) => t.id === ANEL_PRESET_ID))    result = [...result, anelPreset()];
+  if (!result.some((t) => t.id === AMARELA_PRESET_ID)) result = [...result, amarelaPreset()];
+  return result;
 }
 
 export function restoreElginPreset(templates: LabelTemplate[]): LabelTemplate[] {
-  const fresh = elginPreset();
-  return [fresh];
+  const PRESET_IDS = [ELGIN_PRESET_ID, ANEL_PRESET_ID, AMARELA_PRESET_ID];
+  const withoutPresets = templates.filter((t) => !PRESET_IDS.includes(t.id));
+  return [elginPreset(), anelPreset(), amarelaPreset(), ...withoutPresets];
 }
 
 export const defaultTemplates = (): LabelTemplate[] => [
   elginPreset(),
+  anelPreset(),
+  amarelaPreset(),
 ];

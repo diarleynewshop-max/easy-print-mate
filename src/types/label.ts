@@ -53,6 +53,8 @@ export interface LabelField {
   barcodeTextMargin?: number;
   barcodeNarrow?: number; // dots
   barcodeWideRatio?: number; // 2..3
+  // Text horizontal stretch (CSS scaleX). 1 = normal, >1 = wider, <1 = narrower
+  scaleX?: number;
 }
 
 export interface LabelTemplate {

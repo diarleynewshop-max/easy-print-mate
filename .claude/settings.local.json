@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\diarl\\\\OneDrive\\\\Documentos\\\\GitHub\\\\SCAN_NEWSHOP_MAIN\" -Recurse -Filter \"*scanman*\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)",
+      "PowerShell(ls -r \"C:\\\\Users\\\\diarl\\\\OneDrive\\\\Documentos\\\\GitHub\\\\SCAN_NEWSHOP_MAIN\\\\src\\\\trigger\")",
+      "Bash(npm run *)"
+    ]
+  }
+}

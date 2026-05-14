@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
 const { consultarProduto, loadErpEnv } = require("./varejo-facil.cjs");
+const { autoUpdater } = require("electron-updater");
 
 const RAW_PRINTER_NAME = process.env.RAW_PRINTER_NAME || "ELGIN L42PRO FULL";
 
@@ -320,11 +321,53 @@ ipcMain.handle("print:raw-prn", async (_event, content, printerName = RAW_PRINTE
   }
 });
 
-app.whenReady().then(createWindow);
+function setupAutoUpdater() {
+  // Só roda no app empacotado, não no dev
+  if (!app.isPackaged) return;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("update-available", (info) => {
+    dialog.showMessageBox({
+      type: "info",
+      title: "Atualização disponível",
+      message: `Nova versão ${info.version} disponível!\nBaixando em segundo plano...`,
+      buttons: ["OK"],
+    });
+  });
+
+  autoUpdater.on("update-downloaded", () => {
+    dialog.showMessageBox({
+      type: "info",
+      title: "Atualização pronta",
+      message: "Atualização baixada. Reiniciar o app para instalar?",
+      buttons: ["Reiniciar agora", "Depois"],
+      defaultId: 0,
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.quitAndInstall();
+    });
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("AutoUpdater error:", err.message);
+  });
+
+  // Verifica 5 segundos após o app abrir para não travar a inicialização
+  setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  setupAutoUpdater();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+// Expõe versão atual para a interface
+ipcMain.handle("app:version", () => app.getVersion());
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();

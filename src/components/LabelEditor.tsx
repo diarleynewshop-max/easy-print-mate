@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LabelTemplate, LabelField, LabelFieldKey } from "@/types/label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,12 +80,12 @@ const FONT_OPTIONS = [
 ];
 
 const BARCODE_FORMATS = [
-  { value: "auto", label: "Auto" },
-  { value: "EAN13", label: "EAN-13" },
+  { value: "EAN13", label: "EAN-13 (padrão)" },
   { value: "EAN8", label: "EAN-8" },
   { value: "CODE128", label: "Code 128" },
-  { value: "UPC", label: "UPC" },
+  { value: "UPC", label: "UPC-A" },
   { value: "ITF14", label: "ITF-14" },
+  { value: "auto", label: "Auto (detectar)" },
 ] as const;
 
 const COLUMN_PRESETS = [
@@ -301,6 +301,7 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
   const [zoom, setZoom] = useState(1.4);
   const [previewMode, setPreviewMode] = useState<"single" | "sheet">("single");
   const [sheetRows, setSheetRows] = useState<number>(2);
+  const [rightPanel, setRightPanel] = useState<"field" | "template">("field");
   const current = local.find((t) => t.id === currentId) || local[0];
   const selected = current.fields.find((field) => field.key === selectedField) || current.fields.find((field) => field.visible) || current.fields[0];
   const SelectedIcon = selected ? FIELD_ICONS[selected.key] : MousePointer2;
@@ -313,6 +314,52 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
   const updateField = (key: LabelFieldKey, patch: Partial<LabelField>) => {
     update({ fields: current.fields.map((f) => (f.key === key ? { ...f, ...patch } : f)) });
   };
+
+  // Refs so the keydown listener always sees the latest state without re-registering
+  const selectedFieldRef = useRef(selectedField);
+  const localRef = useRef(local);
+  const currentIdRef = useRef(currentId);
+  useEffect(() => { selectedFieldRef.current = selectedField; }, [selectedField]);
+  useEffect(() => { localRef.current = local; }, [local]);
+  useEffect(() => { currentIdRef.current = currentId; }, [currentId]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const sf = selectedFieldRef.current;
+      if (!sf) return;
+      // Ignore when typing in an input / textarea / select
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+      const step = e.shiftKey ? 2 : e.ctrlKey ? 0.1 : 0.5;
+      let dx = 0, dy = 0;
+      if (e.key === "ArrowUp")    dy = -step;
+      else if (e.key === "ArrowDown")  dy =  step;
+      else if (e.key === "ArrowLeft")  dx = -step;
+      else if (e.key === "ArrowRight") dx =  step;
+      else return;
+
+      e.preventDefault();
+
+      const cur = localRef.current.find((t) => t.id === currentIdRef.current) ?? localRef.current[0];
+      const next = localRef.current.map((t) =>
+        t.id === cur.id
+          ? normalizeTemplate({
+              ...t,
+              fields: t.fields.map((f) =>
+                f.key === sf
+                  ? { ...f, x: Math.max(0, parseFloat((f.x + dx).toFixed(2))), y: Math.max(0, parseFloat((f.y + dy).toFixed(2))) }
+                  : f
+              ),
+            })
+          : t
+      );
+      setLocal(next);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []); // register once, refs always carry latest values
 
   const save = () => {
     storage.saveTemplates(local);
@@ -471,7 +518,7 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
                 <button
                   key={field.key}
                   type="button"
-                  onClick={() => setSelectedField(field.key)}
+                  onClick={() => { setSelectedField(field.key); setRightPanel("field"); }}
                   className={cn(
                     "mb-1 flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition-colors",
                     active
@@ -659,7 +706,402 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
         </main>
 
         {/* RIGHT PANEL: properties */}
-        <aside className="min-h-0 overflow-auto border-l bg-card/80">
+        <aside className="min-h-0 flex flex-col border-l bg-card/80">
+          {/* Tab switcher */}
+          <div className="flex shrink-0 border-b bg-card">
+            <button
+              type="button"
+              onClick={() => setRightPanel("field")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2 text-[11px] font-semibold uppercase tracking-wide transition-colors",
+                rightPanel === "field"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <SelectedIcon className="h-3.5 w-3.5" />
+              {selected ? FIELD_LABELS[selected.key] : "Campo"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRightPanel("template")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2 text-[11px] font-semibold uppercase tracking-wide transition-colors",
+                rightPanel === "template"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Modelo
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto">
+          {rightPanel === "field" && !selected && (
+            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-xs text-muted-foreground">
+              <MousePointer2 className="h-8 w-8 opacity-30" />
+              <p>Clique em um campo<br />no painel de Camadas</p>
+            </div>
+          )}
+          {rightPanel === "field" && selected && (
+            <Section icon={SelectedIcon} title={`Campo: ${FIELD_LABELS[selected.key]}`}>
+              <div className="flex h-9 items-center justify-between rounded-md border bg-background px-3">
+                <span className="text-xs font-medium">Visível</span>
+                <Switch checked={selected.visible} onCheckedChange={(value) => updateField(selected.key, { visible: value })} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <NumberControl label="X" suffix="mm" value={selected.x} step={0.5} onChange={(value) => updateField(selected.key, { x: value })} />
+                <NumberControl label="Y" suffix="mm" value={selected.y} step={0.5} onChange={(value) => updateField(selected.key, { y: value })} />
+                <NumberControl label="Largura" suffix="mm" value={selected.widthMm ?? 10} step={0.5} min={1} onChange={(value) => updateField(selected.key, { widthMm: value })} />
+                <NumberControl label="Altura" suffix="mm" value={selected.heightMm ?? 5} step={0.5} min={1} onChange={(value) => updateField(selected.key, { heightMm: value })} />
+              </div>
+
+              {selected.key !== "barcode" && (
+                <>
+                  <FontControl
+                    label="Fonte"
+                    value={selected.fontFamily || current.fontFamily}
+                    onChange={(value) => updateField(selected.key, { fontFamily: value })}
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <NumberControl label="Tamanho" suffix="pt" value={selected.fontSize} min={1} onChange={(value) => updateField(selected.key, { fontSize: value })} />
+                    <SelectControl
+                      label="Alinhar"
+                      value={selected.align || "left"}
+                      options={[
+                        { value: "left", label: "Esq." },
+                        { value: "center", label: "Centro" },
+                        { value: "right", label: "Dir." },
+                      ]}
+                      onChange={(value) => updateField(selected.key, { align: value as LabelField["align"] })}
+                    />
+                    <div className="space-y-1">
+                      <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Estilo</Label>
+                      <Button
+                        type="button"
+                        variant={selected.bold ? "default" : "outline"}
+                        className="h-8 w-full text-xs"
+                        onClick={() => updateField(selected.key, { bold: !selected.bold })}
+                      >
+                        <Bold className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {selected.key !== "barcode" && (
+                <div className="space-y-1.5 rounded-md border bg-background p-2">
+                  <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Largura do texto (stretch)
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min={0.3}
+                      max={3}
+                      step={0.05}
+                      value={selected.scaleX ?? 1}
+                      onChange={(e) => updateField(selected.key, { scaleX: Number(e.target.value) })}
+                      className="flex-1 accent-primary"
+                    />
+                    <span className="w-10 text-center text-xs tabular-nums font-mono">
+                      {((selected.scaleX ?? 1) * 100).toFixed(0)}%
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[10px]"
+                      onClick={() => updateField(selected.key, { scaleX: 1 })}
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[0.6, 0.8, 1, 1.5].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => updateField(selected.key, { scaleX: v })}
+                        className={cn(
+                          "rounded border py-1 text-[10px] transition-colors hover:border-primary",
+                          (selected.scaleX ?? 1) === v ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"
+                        )}
+                      >
+                        {v === 1 ? "Normal" : `${v * 100}%`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selected.key !== "barcode" && (
+                <div>
+                  <Label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <span className="inline-flex items-center gap-1"><Palette className="h-3 w-3" /> Cor</span>
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={selected.color || "#000000"}
+                      onChange={(e) => updateField(selected.key, { color: e.target.value })}
+                      className="h-8 w-10 cursor-pointer rounded-md border bg-background p-1"
+                      aria-label="Cor"
+                    />
+                    <Input
+                      value={selected.color || "#000000"}
+                      onChange={(e) => updateField(selected.key, { color: e.target.value })}
+                      className="h-8 flex-1 px-2 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selected.key === "barcode" && (
+                <div className="space-y-3">
+                  {/* Presets rápidos */}
+                  <div className="rounded-md border bg-background p-2 space-y-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                      <Barcode className="h-3.5 w-3.5 text-primary" /> Presets
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { label: "Compacto", sub: "≤15mm", fontSize: 6, margin: 0, barWidth: 0.8 },
+                        { label: "Normal",   sub: "15–25mm", fontSize: 9, margin: 1, barWidth: 1 },
+                        { label: "Grande",   sub: ">25mm", fontSize: 11, margin: 2, barWidth: 1.2 },
+                      ].map((p) => {
+                        const active = selected.fontSize === p.fontSize && (selected.barcodeTextMargin ?? 1) === p.margin && (selected.barcodeBarWidth ?? 1) === p.barWidth;
+                        return (
+                          <button
+                            key={p.label}
+                            type="button"
+                            onClick={() => updateField(selected.key, { fontSize: p.fontSize, barcodeTextMargin: p.margin, barcodeBarWidth: p.barWidth })}
+                            className={cn(
+                              "flex flex-col items-center rounded-md border py-2 px-1 text-[10px] transition-colors hover:border-primary",
+                              active ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"
+                            )}
+                          >
+                            <span className="font-semibold">{p.label}</span>
+                            <span className="opacity-70">{p.sub}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Formato & visibilidade */}
+                  <div className="rounded-md border bg-background p-2 space-y-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Código</div>
+                    <SelectControl
+                      label="Formato"
+                      value={selected.barcodeFormat || "EAN13"}
+                      options={[...BARCODE_FORMATS]}
+                      onChange={(value) => updateField(selected.key, { barcodeFormat: value as LabelField["barcodeFormat"] })}
+                    />
+                    <div className="flex h-8 items-center justify-between rounded-md border bg-muted/30 px-3">
+                      <span className="text-xs font-medium">Mostrar números</span>
+                      <Switch
+                        checked={selected.barcodeDisplayValue !== false}
+                        onCheckedChange={(v) => updateField(selected.key, { barcodeDisplayValue: v })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Números abaixo do código */}
+                  {selected.barcodeDisplayValue !== false && (
+                    <div className="rounded-md border bg-amber-50/60 border-amber-200 p-2 space-y-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                        Números abaixo do código
+                      </div>
+
+                      {/* Alinhamento — primeiro controle, bem visível */}
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Alinhamento dos números</Label>
+                        <div className="grid grid-cols-3 gap-1">
+                          {([
+                            { value: "left",   icon: "▐■ · ·", label: "Esquerda" },
+                            { value: "center", icon: "· ■ ·",  label: "Centro"   },
+                            { value: "right",  icon: "· · ■▌", label: "Direita"  },
+                          ] as const).map((a) => {
+                            const active = (selected.align || "center") === a.value;
+                            return (
+                              <button
+                                key={a.value}
+                                type="button"
+                                onClick={() => updateField(selected.key, { align: a.value })}
+                                className={cn(
+                                  "flex flex-col items-center gap-0.5 rounded-md border py-2 text-[10px] font-medium transition-colors hover:border-primary",
+                                  active
+                                    ? "border-primary bg-primary/10 text-primary"
+                                    : "border-border text-muted-foreground"
+                                )}
+                              >
+                                <span className="text-[11px] font-mono tracking-widest">{a.icon}</span>
+                                <span>{a.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <NumberControl
+                          label="Tamanho fonte"
+                          suffix="px"
+                          value={selected.fontSize}
+                          min={4}
+                          max={20}
+                          step={1}
+                          onChange={(value) => updateField(selected.key, { fontSize: value })}
+                        />
+                        <NumberControl
+                          label="Espaço barra→num"
+                          suffix="px"
+                          value={selected.barcodeTextMargin ?? 1}
+                          min={0}
+                          max={10}
+                          step={1}
+                          onChange={(value) => updateField(selected.key, { barcodeTextMargin: value })}
+                        />
+                      </div>
+                      <SelectControl
+                        label="Posição"
+                        value={selected.barcodeTextPosition || "bottom"}
+                        options={[
+                          { value: "bottom", label: "Baixo" },
+                          { value: "top", label: "Cima" },
+                        ]}
+                        onChange={(value) => updateField(selected.key, { barcodeTextPosition: value as LabelField["barcodeTextPosition"] })}
+                      />
+                      <FontControl
+                        label="Fonte dos números"
+                        value={selected.fontFamily || current.fontFamily}
+                        onChange={(value) => updateField(selected.key, { fontFamily: value })}
+                      />
+                      <div className="rounded bg-amber-100 px-2 py-1.5 text-[10px] text-amber-800 leading-relaxed">
+                        Para etiqueta pequena: preset <strong>Compacto</strong> usa fonte 6px e espaço 0 — máximo de espaço para as barras.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Barras */}
+                  <div className="rounded-md border bg-background p-2 space-y-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Barras</div>
+
+                    {/* Slider de espessura — principal controle pedido pelo usuário */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Espessura das barras
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground w-8 text-right">Fino</span>
+                        <input
+                          type="range"
+                          min={0.3}
+                          max={2.5}
+                          step={0.05}
+                          value={selected.barcodeBarWidth ?? 1}
+                          onChange={(e) => updateField(selected.key, { barcodeBarWidth: Number(e.target.value) })}
+                          className="flex-1 accent-primary"
+                        />
+                        <span className="text-[10px] text-muted-foreground w-10">Largo</span>
+                        <span className="w-8 text-center text-xs tabular-nums font-mono bg-muted rounded px-1">
+                          {(selected.barcodeBarWidth ?? 1).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex gap-1">
+                        {[0.4, 0.7, 1.0, 1.4, 2.0].map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => updateField(selected.key, { barcodeBarWidth: v })}
+                            className={cn(
+                              "flex-1 rounded border py-0.5 text-[10px] transition-colors hover:border-primary",
+                              (selected.barcodeBarWidth ?? 1) === v
+                                ? "border-primary bg-primary/10 text-primary font-semibold"
+                                : "border-border text-muted-foreground"
+                            )}
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <NumberControl
+                        label="Valor exato"
+                        value={selected.barcodeBarWidth ?? 1}
+                        min={0.3}
+                        max={3}
+                        step={0.05}
+                        onChange={(value) => updateField(selected.key, { barcodeBarWidth: value })}
+                      />
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                          <Palette className="h-3 w-3" /> Cor
+                        </Label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={selected.barcodeLineColor || selected.color || "#000000"}
+                            onChange={(e) => updateField(selected.key, { barcodeLineColor: e.target.value, color: e.target.value })}
+                            className="h-8 w-10 cursor-pointer rounded-md border bg-background p-1"
+                            aria-label="Cor das barras"
+                          />
+                          <Input
+                            value={selected.barcodeLineColor || selected.color || "#000000"}
+                            onChange={(e) => updateField(selected.key, { barcodeLineColor: e.target.value, color: e.target.value })}
+                            className="h-8 flex-1 px-2 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selected.key === "descricao" && (
+                <div className="space-y-2 rounded-md border bg-background p-2">
+                  <SelectControl
+                    label="Conteúdo do texto"
+                    value={selected.descriptionMode || "first-word"}
+                    options={[
+                      { value: "first-word", label: "Primeira palavra" },
+                      { value: "first-two-words", label: "Primeiras 2 palavras" },
+                      { value: "internal-code", label: "Código interno" },
+                      { value: "full", label: "Descrição completa" },
+                      { value: "custom", label: "Texto customizado" },
+                    ]}
+                    onChange={(value) => updateField(selected.key, { descriptionMode: value as never })}
+                  />
+                  {selected.descriptionMode === "custom" && (
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="Texto fixo a imprimir"
+                      value={selected.customText || ""}
+                      onChange={(e) => updateField(selected.key, { customText: e.target.value })}
+                    />
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Prefixo</Label>
+                <Input
+                  className="h-8 text-xs"
+                  value={selected.label || ""}
+                  placeholder="Ex.: R$"
+                  onChange={(e) => updateField(selected.key, { label: e.target.value })}
+                />
+              </div>
+            </Section>
+          )}
+          {rightPanel === "template" && (
+          <>
           <Section icon={FileText} title="Modelo">
             <div className="space-y-1">
               <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Nome</Label>
@@ -885,149 +1327,9 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
               Espaço calculado entre colunas: <strong className="text-foreground">{computeHorizontalSpacing(current).toFixed(2)} mm</strong>
             </div>
           </Section>
-
-          {selected && (
-            <Section icon={SelectedIcon} title={`Campo: ${FIELD_LABELS[selected.key]}`}>
-              <div className="flex h-9 items-center justify-between rounded-md border bg-background px-3">
-                <span className="text-xs font-medium">Visível</span>
-                <Switch checked={selected.visible} onCheckedChange={(value) => updateField(selected.key, { visible: value })} />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <NumberControl label="X" suffix="mm" value={selected.x} step={0.5} onChange={(value) => updateField(selected.key, { x: value })} />
-                <NumberControl label="Y" suffix="mm" value={selected.y} step={0.5} onChange={(value) => updateField(selected.key, { y: value })} />
-                <NumberControl label="Largura" suffix="mm" value={selected.widthMm ?? 10} step={0.5} min={1} onChange={(value) => updateField(selected.key, { widthMm: value })} />
-                <NumberControl label="Altura" suffix="mm" value={selected.heightMm ?? 5} step={0.5} min={1} onChange={(value) => updateField(selected.key, { heightMm: value })} />
-              </div>
-
-              <FontControl
-                label={selected.key === "barcode" ? "Fonte dos números" : "Fonte"}
-                value={selected.fontFamily || current.fontFamily}
-                onChange={(value) => updateField(selected.key, { fontFamily: value })}
-              />
-
-              <div className="grid grid-cols-3 gap-2">
-                <NumberControl label="Tamanho" suffix="pt" value={selected.fontSize} min={1} onChange={(value) => updateField(selected.key, { fontSize: value })} />
-                <SelectControl
-                  label="Alinhar"
-                  value={selected.align || "left"}
-                  options={[
-                    { value: "left", label: "Esq." },
-                    { value: "center", label: "Centro" },
-                    { value: "right", label: "Dir." },
-                  ]}
-                  onChange={(value) => updateField(selected.key, { align: value as LabelField["align"] })}
-                />
-                <div className="space-y-1">
-                  <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Estilo</Label>
-                  <Button
-                    type="button"
-                    variant={selected.bold ? "default" : "outline"}
-                    className="h-8 w-full text-xs"
-                    onClick={() => updateField(selected.key, { bold: !selected.bold })}
-                  >
-                    <Bold className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <Label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  <span className="inline-flex items-center gap-1"><Palette className="h-3 w-3" /> Cor</span>
-                </Label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={selected.color || "#000000"}
-                    onChange={(e) => updateField(selected.key, { color: e.target.value })}
-                    className="h-8 w-10 cursor-pointer rounded-md border bg-background p-1"
-                    aria-label="Cor"
-                  />
-                  <Input
-                    value={selected.color || "#000000"}
-                    onChange={(e) => updateField(selected.key, { color: e.target.value })}
-                    className="h-8 flex-1 px-2 text-xs"
-                  />
-                </div>
-              </div>
-
-              {selected.key === "barcode" && (
-                <div className="space-y-2 rounded-md border bg-background p-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Opções do código
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <SelectControl
-                      label="Tipo"
-                      value={selected.barcodeFormat || "auto"}
-                      options={[...BARCODE_FORMATS]}
-                      onChange={(value) => updateField(selected.key, { barcodeFormat: value as LabelField["barcodeFormat"] })}
-                    />
-                    <SelectControl
-                      label="Números"
-                      value={selected.barcodeDisplayValue === false ? "false" : "true"}
-                      options={[
-                        { value: "true", label: "Mostrar" },
-                        { value: "false", label: "Ocultar" },
-                      ]}
-                      onChange={(value) => updateField(selected.key, { barcodeDisplayValue: value === "true" })}
-                    />
-                    <SelectControl
-                      label="Posição"
-                      value={selected.barcodeTextPosition || "bottom"}
-                      options={[
-                        { value: "bottom", label: "Baixo" },
-                        { value: "top", label: "Cima" },
-                      ]}
-                      onChange={(value) => updateField(selected.key, { barcodeTextPosition: value as LabelField["barcodeTextPosition"] })}
-                    />
-                    <NumberControl
-                      label="Larg. barra"
-                      value={selected.barcodeBarWidth ?? 1}
-                      min={0.4}
-                      step={0.1}
-                      onChange={(value) => updateField(selected.key, { barcodeBarWidth: value })}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {selected.key === "descricao" && (
-                <div className="space-y-2 rounded-md border bg-background p-2">
-                  <SelectControl
-                    label="Conteúdo do texto"
-                    value={selected.descriptionMode || "first-word"}
-                    options={[
-                      { value: "first-word", label: "Primeira palavra" },
-                      { value: "first-two-words", label: "Primeiras 2 palavras" },
-                      { value: "internal-code", label: "Código interno" },
-                      { value: "full", label: "Descrição completa" },
-                      { value: "custom", label: "Texto customizado" },
-                    ]}
-                    onChange={(value) => updateField(selected.key, { descriptionMode: value as never })}
-                  />
-                  {selected.descriptionMode === "custom" && (
-                    <Input
-                      className="h-8 text-xs"
-                      placeholder="Texto fixo a imprimir"
-                      value={selected.customText || ""}
-                      onChange={(e) => updateField(selected.key, { customText: e.target.value })}
-                    />
-                  )}
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Prefixo</Label>
-                <Input
-                  className="h-8 text-xs"
-                  value={selected.label || ""}
-                  placeholder="Ex.: R$"
-                  onChange={(e) => updateField(selected.key, { label: e.target.value })}
-                />
-              </div>
-            </Section>
+          </>
           )}
+          </div>
         </aside>
       </div>
     </div>

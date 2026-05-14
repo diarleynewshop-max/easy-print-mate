@@ -523,18 +523,18 @@ const Index = () => {
                     Quantidade ({cols} col, multiplos de {cols})
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setCopies((c) => Math.max(1, c - 1))}>
+                    <Button size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => setCopies((c) => Math.max(1, c - 1))}>
                       <Minus className="h-4 w-4" />
                     </Button>
                     <input
                       type="number"
                       min={1}
                       step={1}
-                      className="h-9 flex-1 rounded-md border bg-background px-3 text-center text-2xl font-bold tabular-nums"
+                      className="h-9 flex-1 min-w-0 rounded-md border bg-background px-3 text-center text-2xl font-bold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       value={copies}
                       onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))}
                     />
-                    <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setCopies((c) => c + 1)}>
+                    <Button size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => setCopies((c) => c + 1)}>
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>
