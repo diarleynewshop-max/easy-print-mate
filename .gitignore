@@ -3,6 +3,7 @@ logs
 *.log
 npm-debug.log*
 yarn-debug.log*
+yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
@@ -12,6 +13,7 @@ dist
 dist-ssr
 release
 .env
+.env.*
 *.local
 
 # Editor directories and files
@@ -24,3 +26,7 @@ release
 *.njsproj
 *.sln
 *.sw?
+
+# Ferramentas locais — não vai para o repositório
+.claude/
+.lovable/
