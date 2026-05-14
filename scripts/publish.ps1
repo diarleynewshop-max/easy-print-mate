@@ -23,8 +23,8 @@ $pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json
 $currentVersion = $pkg.version
 
 if ($Version -ne "") {
-    (Get-Content $pkgPath -Raw) -replace "`"version`": `"$currentVersion`"", "`"version`": `"$Version`"" |
-        Set-Content $pkgPath -Encoding utf8
+    $newContent = (Get-Content $pkgPath -Raw) -replace "`"version`": `"$currentVersion`"", "`"version`": `"$Version`""
+  [System.IO.File]::WriteAllText($pkgPath, $newContent, [System.Text.UTF8Encoding]::new($false))
     Write-Host "Versão atualizada: $currentVersion → $Version" -ForegroundColor Yellow
     $currentVersion = $Version
 } else {

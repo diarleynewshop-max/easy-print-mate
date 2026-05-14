@@ -75,17 +75,28 @@ function safeWidthMm(template: LabelTemplate) {
   return template.widthMm - (template.safePaddingLeftMm ?? 0) - (template.safePaddingRightMm ?? 0);
 }
 
-// Auto narrow: try to fit barcode within available width
+// Auto narrow: fit barcode within field width, capping preset values if needed
 function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: string) {
-  if (field.barcodeNarrow && field.barcodeNarrow > 0) return field.barcodeNarrow;
-  if (field.barcodeBarWidth && field.barcodeBarWidth > 0) return Math.max(1, Math.round(field.barcodeBarWidth * DOTS_PER_MM));
-  const availableMm = field.widthMm ?? safeWidthMm(template);
-  const availableDots = mmToDots(availableMm);
+  const availableDots = mmToDots(field.widthMm ?? safeWidthMm(template));
   const len = payload.length || 13;
-  // CODE128 approx: narrow * (11*chars + 35); EAN13: narrow * 113
-  const approxBars = Math.max(113, 11 * len + 35);
-  const narrow = Math.max(1, Math.floor(availableDots / approxBars));
-  return Math.min(narrow, 4);
+  // Module count per barcode type
+  const moduleCount =
+    len === 13 ? 113 :  // EAN-13
+    len === 8  ? 67  :  // EAN-8
+    len === 12 ? 113 :  // UPC-A
+    len === 14 ? 143 :  // ITF-14
+    Math.max(113, 11 * len + 35); // CODE128 approx
+  const maxNarrow = Math.max(1, Math.floor(availableDots / moduleCount));
+
+  if (field.barcodeNarrow && field.barcodeNarrow > 0) {
+    // Cap preset value so barcode never exceeds field width
+    return Math.min(field.barcodeNarrow, maxNarrow);
+  }
+  // barcodeBarWidth is jsbarcode visual units (not mm) — round directly, no mm conversion
+  if (field.barcodeBarWidth && field.barcodeBarWidth > 0) {
+    return Math.min(Math.max(1, Math.round(field.barcodeBarWidth)), maxNarrow);
+  }
+  return maxNarrow;
 }
 
 function eplBarcodeType(field: LabelField, payload: string) {
