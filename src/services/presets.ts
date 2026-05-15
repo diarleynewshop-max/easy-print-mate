@@ -24,8 +24,8 @@ export function elginPreset(): LabelTemplate {
     safePaddingRightMm: 2,
     safePaddingTopMm: 1,
     safePaddingBottomMm: 1,
-    printRotation: 0,
-    columnOrder: "ltr",
+    printRotation: 180,
+    columnOrder: "rtl",
     preferredPrinterName: "",
     fontFamily: "Arial, sans-serif",
     fields: [

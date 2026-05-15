@@ -116,8 +116,11 @@ function eplBarcodeType(field: LabelField, payload: string) {
 }
 
 function getColumnIndices(template: LabelTemplate, total: number) {
-  const base = Array.from({ length: total }, (_, index) => index);
-  return template.columnOrder === "rtl" ? base.reverse() : base;
+  const cols = Math.max(1, template.columns || 1);
+  if (template.columnOrder === "rtl") {
+    return Array.from({ length: total }, (_, i) => cols - 1 - i);
+  }
+  return Array.from({ length: total }, (_, i) => i);
 }
 
 function getFieldPosition(template: LabelTemplate, field: LabelField, offsetXmm: number) {
@@ -125,7 +128,7 @@ function getFieldPosition(template: LabelTemplate, field: LabelField, offsetXmm:
   const fieldWidthMm = field.widthMm ?? 0;
   const fieldHeightMm = field.heightMm ?? (field.key === "barcode" ? 8 : 5);
   if (rotation === 180) {
-    const x = offsetXmm + (template.widthMm - field.x - fieldWidthMm);
+    const x = offsetXmm + template.widthMm - field.x;
     const y = (template.marginTopMm ?? 0) + (template.heightMm - field.y - fieldHeightMm);
     return { x: mmToDots(x), y: mmToDots(y), rotation: 2 as const };
   }
