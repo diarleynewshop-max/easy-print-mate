@@ -1,9 +1,14 @@
 import { LabelField, LabelTemplate, PrintQueueItem, Product } from "@/types/label";
 
-const DOTS_PER_MM = 8;
+const DEFAULT_DPI = 203;
 
-function mmToDots(mm: number) {
-  return Math.round(mm * DOTS_PER_MM);
+function getDotsPerMm(template?: LabelTemplate) {
+  const dpi = template?.dpi || DEFAULT_DPI;
+  return dpi === 300 ? 11.81 : 8;
+}
+
+function mmToDots(mm: number, template?: LabelTemplate) {
+  return Math.round(mm * getDotsPerMm(template));
 }
 
 function cleanText(value: string) {
@@ -67,8 +72,8 @@ function textFont(field: LabelField) {
   return { font: 1, h: 1, w: 1 };
 }
 
-function barcodeHeight(field: LabelField) {
-  return Math.max(24, mmToDots(field.heightMm ?? 8));
+function barcodeHeight(field: LabelField, template: LabelTemplate) {
+  return Math.max(24, mmToDots(field.heightMm ?? 8, template));
 }
 
 function safeWidthMm(template: LabelTemplate) {
@@ -77,7 +82,7 @@ function safeWidthMm(template: LabelTemplate) {
 
 // Auto narrow: fit barcode within field width, capping preset values if needed
 function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: string) {
-  const availableDots = mmToDots(field.widthMm ?? safeWidthMm(template));
+  const availableDots = mmToDots(field.widthMm ?? safeWidthMm(template), template);
   const len = payload.length || 13;
   // Module count per barcode type
   const moduleCount =
@@ -124,18 +129,10 @@ function getColumnIndices(template: LabelTemplate, total: number) {
 }
 
 function getFieldPosition(template: LabelTemplate, field: LabelField, offsetXmm: number) {
-  const rotation = template.printRotation ?? 0;
-  const fieldWidthMm = field.widthMm ?? 0;
-  const fieldHeightMm = field.heightMm ?? (field.key === "barcode" ? 8 : 5);
-  if (rotation === 180) {
-    const x = offsetXmm + template.widthMm - field.x;
-    const y = (template.marginTopMm ?? 0) + (template.heightMm - field.y - fieldHeightMm);
-    return { x: mmToDots(x), y: mmToDots(y), rotation: 2 as const };
-  }
   return {
-    x: mmToDots(offsetXmm + field.x),
-    y: mmToDots((template.marginTopMm ?? 0) + field.y),
-    rotation: 0 as const,
+    x: mmToDots(offsetXmm + field.x, template),
+    y: mmToDots((template.marginTopMm ?? 0) + field.y, template),
+    rotation: 0 as const, // We use ZB in header for 180 rotation
   };
 }
 
@@ -152,11 +149,13 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
   const pageWidthMm =
     template.paperWidthMm && template.paperWidthMm > 0 ? template.paperWidthMm : calculatedPageWidthMm;
   const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
-  const pageWidthDots = mmToDots(pageWidthMm);
-  const pageHeightDots = mmToDots(pageHeightMm);
-  const gapDots = mmToDots(rowGapMm);
+  const pageWidthDots = mmToDots(pageWidthMm, template);
+  const pageHeightDots = mmToDots(pageHeightMm, template);
+  const gapDots = mmToDots(rowGapMm, template);
   const labelsInRow = Math.min(columns, Math.max(1, copies));
   const rowCopies = Math.max(1, Math.ceil(copies / columns));
+
+  const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
 
   const lines = [
     "I8,1,001",
@@ -164,7 +163,7 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
     "OD",
     "JF",
     "WN",
-    "ZT",
+    rotationCmd,
     `Q${pageHeightDots},${gapDots}`,
     "N",
   ];
@@ -184,7 +183,7 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
           const narrow = autoBarcodeNarrow(field, template, barcode);
           const wide = Math.max(2, Math.min(4, field.barcodeWideRatio ?? 3));
           const printText = field.barcodeDisplayValue === false ? "N" : "B";
-          lines.push(`B${x},${y},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field)},${printText},"${barcode}"`);
+          lines.push(`B${x},${y},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field, template)},${printText},"${barcode}"`);
           return;
         }
 
@@ -213,6 +212,8 @@ function eplHeader(template: LabelTemplate) {
     template.paperWidthMm && template.paperWidthMm > 0 ? template.paperWidthMm : calculatedPageWidthMm;
   const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
 
+  const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
+
   return {
     columns,
     columnGapMm,
@@ -220,16 +221,18 @@ function eplHeader(template: LabelTemplate) {
     marginTopMm,
     pageLines: [
       "I8,1,001",
-      `q${mmToDots(pageWidthMm)}`,
+      `q${mmToDots(pageWidthMm, template)}`,
       "OD",
       "JF",
       "WN",
-      "ZT",
-      `Q${mmToDots(pageHeightMm)},${mmToDots(rowGapMm)}`,
+      rotationCmd,
+      `Q${mmToDots(pageHeightMm, template)},${mmToDots(rowGapMm, template)}`,
       "N",
     ],
   };
 }
+
+
 
 function appendProductFields(lines: string[], template: LabelTemplate, product: Product, xOffsetMm: number) {
   template.fields
@@ -243,7 +246,7 @@ function appendProductFields(lines: string[], template: LabelTemplate, product: 
         const narrow = autoBarcodeNarrow(field, template, barcode);
         const wide = Math.max(2, Math.min(4, field.barcodeWideRatio ?? 3));
         const printText = field.barcodeDisplayValue === false ? "N" : "B";
-        lines.push(`B${x},${y},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field)},${printText},"${barcode}"`);
+        lines.push(`B${x},${y},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field, template)},${printText},"${barcode}"`);
         return;
       }
 
@@ -307,9 +310,11 @@ export function buildCalibrationPrn(template: LabelTemplate) {
   const pageWidthMm =
     template.paperWidthMm && template.paperWidthMm > 0 ? template.paperWidthMm : calculatedPageWidthMm;
   const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
-  const pageWidthDots = mmToDots(pageWidthMm);
-  const pageHeightDots = mmToDots(pageHeightMm);
-  const gapDots = mmToDots(rowGapMm);
+  const pageWidthDots = mmToDots(pageWidthMm, template);
+  const pageHeightDots = mmToDots(pageHeightMm, template);
+  const gapDots = mmToDots(rowGapMm, template);
+
+  const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
 
   const lines = [
     "I8,1,001",
@@ -317,17 +322,17 @@ export function buildCalibrationPrn(template: LabelTemplate) {
     "OD",
     "JF",
     "WN",
-    "ZT",
+    rotationCmd,
     `Q${pageHeightDots},${gapDots}`,
     "N",
   ];
 
-  const wDots = mmToDots(template.widthMm);
-  const hDots = mmToDots(template.heightMm);
+  const wDots = mmToDots(template.widthMm, template);
+  const hDots = mmToDots(template.heightMm, template);
 
   for (let col = 0; col < columns; col++) {
-    const x0 = mmToDots(marginLeftMm + col * (template.widthMm + columnGapMm));
-    const y0 = mmToDots(marginTopMm);
+    const x0 = mmToDots(marginLeftMm + col * (template.widthMm + columnGapMm), template);
+    const y0 = mmToDots(marginTopMm, template);
     // 4 borders via LO (line orient): top, bottom, left, right
     lines.push(`LO${x0},${y0},${wDots},2`);
     lines.push(`LO${x0},${y0 + hDots - 2},${wDots},2`);

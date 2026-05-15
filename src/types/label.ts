@@ -80,6 +80,7 @@ export interface LabelTemplate {
   preferredPrinterName?: string;
   printRotation?: 0 | 180;
   columnOrder?: "ltr" | "rtl";
+  dpi?: 203 | 300;
   fontFamily: string;
   fields: LabelField[];
 }

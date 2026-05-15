@@ -26,6 +26,7 @@ export function elginPreset(): LabelTemplate {
     safePaddingBottomMm: 1,
     printRotation: 180,
     columnOrder: "rtl",
+    dpi: 203,
     preferredPrinterName: "",
     fontFamily: "Arial, sans-serif",
     fields: [

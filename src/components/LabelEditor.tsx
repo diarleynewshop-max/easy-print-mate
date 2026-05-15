@@ -1164,6 +1164,47 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
             </div>
           </Section>
 
+          <Section icon={RotateCw} title="Ajustes de Impressão">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Resolução (DPI)</Label>
+                <select
+                  className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                  value={current.dpi || 203}
+                  onChange={(e) => update({ dpi: Number(e.target.value) as 203 | 300 })}
+                >
+                  <option value={203}>203 DPI (L42 PRO Padrão)</option>
+                  <option value={300}>300 DPI (L42 PRO 300)</option>
+                </select>
+                <p className="text-[9px] text-muted-foreground leading-tight px-0.5">
+                  Se as etiquetas saírem menores que o esperado ou descalibradas, tente 300 DPI.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Girar 180°</Label>
+                  <p className="text-[9px] text-muted-foreground leading-tight">Inverte a cabeça da impressão</p>
+                </div>
+                <Switch
+                  checked={current.printRotation === 180}
+                  onCheckedChange={(checked) => update({ printRotation: checked ? 180 : 0 })}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Colunas Invertidas</Label>
+                  <p className="text-[9px] text-muted-foreground leading-tight">Ordem Direita para Esquerda (RTL)</p>
+                </div>
+                <Switch
+                  checked={current.columnOrder === "rtl"}
+                  onCheckedChange={(checked) => update({ columnOrder: checked ? "rtl" : "ltr" })}
+                />
+              </div>
+            </div>
+          </Section>
+
           <Section icon={LayoutGrid} title="Folha & Colunas">
             <div>
               <Label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
