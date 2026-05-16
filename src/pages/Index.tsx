@@ -91,6 +91,18 @@ const Index = () => {
   const queueRows = Math.ceil(queueTotal / cols);
 
   useEffect(() => {
+    if (view === "scan") {
+      const refreshed = storage.getTemplates();
+      if (refreshed.length) {
+        setTemplates(refreshed);
+        const activeId = storage.getActiveTemplateId() || ELGIN_PRESET_ID;
+        setActiveTemplateId(activeId);
+      }
+      focusInput();
+    }
+  }, [view]);
+
+  useEffect(() => {
     document.title = "Easy Print Mate - Elgin L42PRO";
   }, []);
 
