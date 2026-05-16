@@ -75,25 +75,13 @@ function textFont(field: LabelField) {
 
 function getAdjustedX(template: LabelTemplate, field: LabelField, x: number, text: string, charWidth: number) {
   if (field.align !== "center" && field.align !== "right") return x;
-
   const dotsPerMm = getDotsPerMm(template);
   const scaledCharWidth = (charWidth * dotsPerMm) / 8;
   const textWidthDots = text.length * scaledCharWidth;
   const fieldWidthDots = mmToDots(field.widthMm ?? 0, template);
-
-  if (field.align === "center") {
-    return Math.round(x + (fieldWidthDots - textWidthDots) / 2);
-  }
-  if (field.align === "right") {
-    return Math.round(x + fieldWidthDots - textWidthDots);
-  }
+  if (field.align === "center") return Math.round(x + (fieldWidthDots - textWidthDots) / 2);
+  if (field.align === "right") return Math.round(x + fieldWidthDots - textWidthDots);
   return x;
-}
-
-function barcodeHeight(field: LabelField, template: LabelTemplate) {
-  // Use heightMm or default to 8mm
-  const h = field.heightMm || 8;
-  return Math.max(16, mmToDots(h, template));
 }
 
 function safeWidthMm(template: LabelTemplate) {
@@ -103,20 +91,12 @@ function safeWidthMm(template: LabelTemplate) {
 function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: string) {
   const availableDots = mmToDots(field.widthMm ?? safeWidthMm(template), template);
   const len = payload.length || 13;
-  const moduleCount =
-    len === 13 ? 113 : 
-    len === 8  ? 67  : 
-    len === 12 ? 113 : 
-    len === 14 ? 143 : 
-    Math.max(113, 11 * len + 35);
-    
+  const moduleCount = len === 13 ? 113 : len === 8 ? 67 : len === 12 ? 113 : len === 14 ? 143 : Math.max(113, 11 * len + 35);
   const maxNarrow = Math.max(1, Math.floor(availableDots / moduleCount));
-  
   if (field.barcodeNarrow && field.barcodeNarrow > 0) {
     const requested = template.dpi === 300 && field.barcodeNarrow < 3 ? Math.round(field.barcodeNarrow * 1.5) : field.barcodeNarrow;
     return Math.min(requested, maxNarrow);
   }
-  
   return Math.min(template.dpi === 300 ? 4 : 2, maxNarrow);
 }
 
@@ -138,9 +118,7 @@ function eplBarcodeType(field: LabelField, payload: string) {
 
 function getColumnIndices(template: LabelTemplate, total: number) {
   const cols = Math.max(1, template.columns || 1);
-  if (template.columnOrder === "rtl") {
-    return Array.from({ length: total }, (_, i) => cols - 1 - i);
-  }
+  if (template.columnOrder === "rtl") return Array.from({ length: total }, (_, i) => cols - 1 - i);
   return Array.from({ length: total }, (_, i) => i);
 }
 
@@ -164,14 +142,17 @@ function appendProductFields(lines: string[], template: LabelTemplate, product: 
         const narrow = autoBarcodeNarrow(field, template, barcode);
         const wide = Math.max(2, Math.min(4, field.barcodeWideRatio ?? 3));
         
-        // We always use 'N' (no text) for the barcode command and print numbers manually below
-        // This avoids the 'gigantic numbers' issue of the printer's internal font
-        lines.push(`B${baseX},${y},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${barcodeHeight(field, template)},N,"${barcode}"`);
+        // BUDGET CALCULATION: 
+        // We subtract the text height (approx 1.5mm) from the field height to ensure it fits the design.
+        const totalHeightDots = mmToDots(field.heightMm || 8, template);
+        const hasText = field.barcodeDisplayValue !== false;
+        const textHeightDots = hasText ? mmToDots(1.6, template) : 0;
+        const actualBarcodeHeightDots = Math.max(12, totalHeightDots - textHeightDots);
         
-        if (field.barcodeDisplayValue !== false) {
-          // Manual Human Readable Text: Font 1, centered below the barcode
-          // Position it about 1mm below the barcode's end
-          const textY = y + barcodeHeight(field, template) + mmToDots(0.5, template);
+        lines.push(`B${baseX},${y},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${actualBarcodeHeightDots},N,"${barcode}"`);
+        
+        if (hasText) {
+          const textY = y + actualBarcodeHeightDots + mmToDots(0.2, template);
           const { font, h, w, charWidth } = { font: 1, h: 1, w: 1, charWidth: 8 };
           const textX = getAdjustedX(template, field, baseX, barcode, charWidth);
           lines.push(`A${textX},${textY},${rotation},${font},${h},${w},N,"${barcode}"`);
