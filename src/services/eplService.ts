@@ -84,6 +84,11 @@ function getAdjustedX(template: LabelTemplate, field: LabelField, x: number, tex
   return x;
 }
 
+function barcodeHeight(field: LabelField, template: LabelTemplate) {
+  const h = field.heightMm || 8;
+  return Math.max(16, mmToDots(h, template));
+}
+
 function safeWidthMm(template: LabelTemplate) {
   return template.widthMm - (template.safePaddingLeftMm ?? 0) - (template.safePaddingRightMm ?? 0);
 }
@@ -93,11 +98,21 @@ function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: 
   const len = payload.length || 13;
   const moduleCount = len === 13 ? 113 : len === 8 ? 67 : len === 12 ? 113 : len === 14 ? 143 : Math.max(113, 11 * len + 35);
   const maxNarrow = Math.max(1, Math.floor(availableDots / moduleCount));
-  if (field.barcodeNarrow && field.barcodeNarrow > 0) {
-    const requested = template.dpi === 300 && field.barcodeNarrow < 3 ? Math.round(field.barcodeNarrow * 1.5) : field.barcodeNarrow;
-    return Math.min(requested, maxNarrow);
+  
+  // Use explicit narrow if provided, or derive from barWidth (presets)
+  let requested = field.barcodeNarrow || (field.barcodeBarWidth ? Math.round(field.barcodeBarWidth * 2) : 2);
+  
+  // Scale for 300 DPI
+  if (template.dpi === 300 && requested < 3) {
+    requested = Math.round(requested * 1.5);
   }
-  return Math.min(template.dpi === 300 ? 4 : 2, maxNarrow);
+  
+  // If we are very close to fitting a larger narrow (within 2mm), we allow it
+  // and rely on the larger 'q' command to not clip the print.
+  const marginDots = mmToDots(2, template);
+  const relaxedMaxNarrow = Math.max(1, Math.floor((availableDots + marginDots) / moduleCount));
+
+  return Math.min(requested, relaxedMaxNarrow);
 }
 
 function eplBarcodeType(field: LabelField, payload: string) {
@@ -141,9 +156,6 @@ function appendProductFields(lines: string[], template: LabelTemplate, product: 
         if (!barcode) return;
         const narrow = autoBarcodeNarrow(field, template, barcode);
         const wide = Math.max(2, Math.min(4, field.barcodeWideRatio ?? 3));
-        
-        // BUDGET CALCULATION: 
-        // We subtract the text height (approx 1.5mm) from the field height to ensure it fits the design.
         const totalHeightDots = mmToDots(field.heightMm || 8, template);
         const hasText = field.barcodeDisplayValue !== false;
         const textHeightDots = hasText ? mmToDots(1.6, template) : 0;
@@ -185,7 +197,10 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
   const rowCopies = Math.max(1, Math.ceil(copies / columns));
   const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
 
-  const lines = ["I8,1,001", `q${pageWidthDots}`, "OD", "JF", "WN", rotationCmd, `Q${pageHeightDots},${gapDots}`, "N"];
+  // Use a generous width limit (832 is common for 4-inch printers) to prevent command dropping
+  const qLimit = Math.max(pageWidthDots, 800);
+
+  const lines = ["I8,1,001", `q${qLimit}`, "OD", "JF", "WN", rotationCmd, `Q${pageHeightDots},${gapDots}`, "N"];
   const columnIndices = getColumnIndices(template, labelsInRow);
   columnIndices.forEach((actualColumn) => {
     const offsetX = marginLeftMm + actualColumn * (template.widthMm + columnGapMm);
@@ -206,13 +221,15 @@ function eplHeader(template: LabelTemplate) {
   const pageWidthMm = template.paperWidthMm || (columns * template.widthMm + (columns - 1) * columnGapMm + marginLeftMm + marginRightMm);
   const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
   const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
+  const pageWidthDots = mmToDots(pageWidthMm, template);
+  const qLimit = Math.max(pageWidthDots, 800);
 
   return {
     columns,
     columnGapMm,
     marginLeftMm,
     marginTopMm,
-    pageLines: ["I8,1,001", `q${mmToDots(pageWidthMm, template)}`, "OD", "JF", "WN", rotationCmd, `Q${mmToDots(pageHeightMm, template)},${mmToDots(rowGapMm, template)}`, "N"],
+    pageLines: ["I8,1,001", `q${qLimit}`, "OD", "JF", "WN", rotationCmd, `Q${mmToDots(pageHeightMm, template)},${mmToDots(rowGapMm, template)}`, "N"],
   };
 }
 
