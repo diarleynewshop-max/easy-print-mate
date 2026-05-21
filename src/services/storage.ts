@@ -157,7 +157,24 @@ export function ensureDefaultTemplates(templates: LabelTemplate[]): LabelTemplat
         : t
     );
   }
-  if (!result.some((t) => t.id === ANEL_PRESET_ID))    result = [...result, anelPreset()];
+  if (!result.some((t) => t.id === ANEL_PRESET_ID)) {
+    result = [...result, anelPreset()];
+  } else {
+    // Fix: Anel preset was ZT (printing upside down), corrected to ZB with inverted Y positions
+    result = result.map((t) => {
+      if (t.id !== ANEL_PRESET_ID || t.printRotation === 180) return t;
+      return {
+        ...t,
+        printRotation: 180 as const,
+        fields: t.fields.map((f) => {
+          if (f.key === "descricao") return { ...f, y: 5.8 };
+          if (f.key === "barcode")   return { ...f, y: 2.1 };
+          if (f.key === "precoVarejo") return { ...f, y: 1.7 };
+          return f;
+        }),
+      };
+    });
+  }
   if (!result.some((t) => t.id === AMARELA_PRESET_ID)) result = [...result, amarelaPreset()];
   return result;
 }
