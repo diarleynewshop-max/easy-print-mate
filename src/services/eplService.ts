@@ -197,8 +197,10 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
   const rowCopies = Math.max(1, Math.ceil(copies / columns));
   const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
 
-  // Use a generous width limit (832 is common for 4-inch printers) to prevent command dropping
-  const qLimit = Math.max(pageWidthDots, 800);
+  // O comando 'q' define a largura da área imprimível. 
+  // Em impressoras Elgin/EPL2 centralizadas, se o 'q' for muito maior que o papel físico,
+  // as coordenadas X serão deslocadas. Usamos o pageWidthDots exato do papel.
+  const qLimit = pageWidthDots;
 
   const lines = ["I8,1,001", `q${qLimit}`, "OD", "JF", "WN", rotationCmd, `Q${pageHeightDots},${gapDots}`, "N"];
   const columnIndices = getColumnIndices(template, labelsInRow);
@@ -222,7 +224,7 @@ function eplHeader(template: LabelTemplate) {
   const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
   const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
   const pageWidthDots = mmToDots(pageWidthMm, template);
-  const qLimit = Math.max(pageWidthDots, 800);
+  const qLimit = pageWidthDots;
 
   return {
     columns,

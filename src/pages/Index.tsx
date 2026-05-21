@@ -311,6 +311,56 @@ const Index = () => {
   const printDisabled = !product || printerStatus !== "online" || hasErrors || copies < 1;
   const queuePrintDisabled = !printQueue.length || printerStatus !== "online" || hasErrors;
 
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      
+      toast.info(`Processando ${lines.length} itens do arquivo...`);
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const line of lines) {
+        // Suporta ';' ou ',' como separador
+        const parts = line.split(/[;,]/);
+        const ean = parts[0]?.trim();
+        const qty = parseInt(parts[1]?.trim() || "1", 10);
+
+        if (!ean) continue;
+
+        try {
+          const p = await fetchProductByEan(config, ean);
+          setPrintQueue((items) => {
+            const existing = items.find((item) => item.product.ean === p.ean);
+            if (existing) {
+              return items.map((item) =>
+                item.id === existing.id ? { ...item, quantity: item.quantity + qty } : item,
+              );
+            }
+            return [...items, { id: `${p.ean}-${Date.now()}-${Math.random()}`, product: p, quantity: qty }];
+          });
+          successCount++;
+        } catch (err) {
+          console.error(`Erro ao importar ${ean}:`, err);
+          failCount++;
+        }
+      }
+
+      if (failCount > 0) {
+        toast.warning(`Importação concluída: ${successCount} sucessos, ${failCount} falhas.`);
+      } else {
+        toast.success(`${successCount} itens adicionados à fila com sucesso!`);
+      }
+      // Limpa o input para permitir re-importar o mesmo arquivo
+      event.target.value = "";
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <aside className="no-print w-60 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
@@ -417,13 +467,34 @@ const Index = () => {
         {view === "scan" && (
           <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4 p-4 overflow-auto no-print">
             <section className="space-y-4">
-              <ProductSearch
-                ref={inputRef}
-                value={code}
-                onChange={setCode}
-                onSubmit={() => search()}
-                loading={loading}
-              />
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <ProductSearch
+                    ref={inputRef}
+                    value={code}
+                    onChange={setCode}
+                    onSubmit={() => search()}
+                    loading={loading}
+                  />
+                </div>
+                <div className="shrink-0">
+                  <input
+                    type="file"
+                    id="csv-import"
+                    accept=".csv,.txt"
+                    className="hidden"
+                    onChange={handleImportFile}
+                  />
+                  <Button
+                    variant="outline"
+                    className="h-12 px-4 flex flex-col items-center justify-center gap-0"
+                    onClick={() => document.getElementById("csv-import")?.click()}
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span className="text-[10px] font-bold uppercase">Importar</span>
+                  </Button>
+                </div>
+              </div>
 
               <div className="rounded-lg border bg-card p-4">
                 <div className="grid gap-3 md:grid-cols-2">

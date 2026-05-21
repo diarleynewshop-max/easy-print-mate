@@ -100,7 +100,9 @@ export const storage = {
           a4PrinterName: parsed.a4PrinterName || "",
         };
       }
-    } catch {}
+    } catch {
+      // Ignore errors reading local storage config
+    }
     return { companyName: "", baseUrl: "", username: "", password: "", token: "", loja: "", labelPrinterName: "", a4PrinterName: "" };
   },
   saveConfig(cfg: VFConfig) {

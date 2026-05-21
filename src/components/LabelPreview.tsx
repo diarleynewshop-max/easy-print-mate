@@ -152,7 +152,9 @@ function useBarcode(ean: string, visible: boolean, widthMm: number, barAreaPx: n
       try {
         JsBarcode(barcodeRef.current, ean, { format: "CODE128", ...options });
         fixViewBox(barcodeRef.current);
-      } catch {}
+      } catch {
+        // If CODE128 also fails, we have a fundamental issue with the EAN data
+      }
     }
   }, [ean, visible, widthMm, barAreaPx, field, template]);
 

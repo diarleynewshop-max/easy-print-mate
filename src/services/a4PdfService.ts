@@ -250,7 +250,9 @@ export function printA4Pdf(template: A4Template, products: (Product | null)[]) {
       try {
         w.focus();
         w.print();
-      } catch {}
+      } catch {
+        // Fallback for environments where window.print() is not available or blocked
+      }
     }, 500);
   }
 }

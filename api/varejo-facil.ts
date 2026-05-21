@@ -447,7 +447,10 @@ async function consultarPrecoProdutoVarejoFacil(
   };
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(
+  req: { method?: string; query: Record<string, string | string[] | undefined> },
+  res: { status: (code: number) => { json: (data: unknown) => void }; json: (data: unknown) => void }
+) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Metodo nao permitido" });
   }

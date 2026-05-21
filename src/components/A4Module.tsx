@@ -51,7 +51,7 @@ export function A4Module({ config }: Props) {
     setPrintBlocks(active.blocks);
     setBlocks(Array.from({ length: active.blocks }, () => ({ product: null })));
     setActiveBlock(0);
-  }, [active?.id, active?.blocks]);
+  }, [active, active?.id, active?.blocks]);
 
   const changePrintBlocks = (count: A4BlockCount) => {
     setPrintBlocks(count);

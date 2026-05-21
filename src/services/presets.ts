@@ -152,7 +152,7 @@ export function anelPreset(): LabelTemplate {
     widthMm: 50,
     heightMm: 10,
     marginMm: 0,
-    marginLeftMm: 22,
+    marginLeftMm: 24,
     marginRightMm: 0,
     marginTopMm: 4,
     marginBottomMm: 4,
@@ -168,6 +168,7 @@ export function anelPreset(): LabelTemplate {
     columnOrder: "ltr",
     preferredPrinterName: "",
     fontFamily: "Arial, sans-serif",
+    dpi: 203,
     fields: [
       {
         key: "descricao",
@@ -308,6 +309,7 @@ export function amarelaPreset(): LabelTemplate {
     columnOrder: "ltr",
     preferredPrinterName: "",
     fontFamily: "Arial, sans-serif",
+    dpi: 203,
     fields: [
       {
         key: "descricao",
