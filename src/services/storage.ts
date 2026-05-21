@@ -147,7 +147,16 @@ export const storage = {
 
 export function ensureDefaultTemplates(templates: LabelTemplate[]): LabelTemplate[] {
   let result = [...templates];
-  if (!result.some((t) => t.id === ELGIN_PRESET_ID))   result = [elginPreset(), ...result];
+  if (!result.some((t) => t.id === ELGIN_PRESET_ID)) {
+    result = [elginPreset(), ...result];
+  } else {
+    // Fix broken ZB+RTL settings introduced in v1.3.1
+    result = result.map((t) =>
+      t.id === ELGIN_PRESET_ID && (t.printRotation === 180 || t.columnOrder === "rtl")
+        ? { ...t, printRotation: 0, columnOrder: "ltr" }
+        : t
+    );
+  }
   if (!result.some((t) => t.id === ANEL_PRESET_ID))    result = [...result, anelPreset()];
   if (!result.some((t) => t.id === AMARELA_PRESET_ID)) result = [...result, amarelaPreset()];
   return result;
