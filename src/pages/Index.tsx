@@ -70,6 +70,7 @@ const Index = () => {
   const [activeTemplateId, setActiveTemplateId] = useState<string>(() => {
     return storage.getActiveTemplateId() || ELGIN_PRESET_ID;
   });
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
 
   const activeTemplate = useMemo(
     () => templates.find((t) => t.id === activeTemplateId) || templates[0],
@@ -136,26 +137,75 @@ const Index = () => {
   const focusInput = () => setTimeout(() => inputRef.current?.focus(), 50);
 
   const search = async (rawCode?: string) => {
-    const ean = (rawCode ?? code).trim();
-    if (!ean) return;
+    const query = (rawCode ?? code).trim();
+    if (!query) return;
     setLoading(true);
     setScanState("searching");
     setError(null);
     setErrorDebug(null);
     setProduct(null);
+    setSearchResults([]);
+
     try {
-      const p = await fetchProductByEan(config, ean);
-      setProduct(p);
-      setScanState("found");
-      const entry: HistoryEntry = { ean: p.ean, descricao: p.descricao, at: Date.now() };
-      storage.pushHistory(entry);
-      setHistory(storage.getHistory());
+      // 1. Tentar busca no banco local primeiro (EAN ou Descrição)
+      const locals = await window.easyPrint.dbSearchProducts(query);
+      
+      if (locals.length === 1) {
+        // Encontrou exatamente um no banco local
+        const p = await fetchProductByEan(config, locals[0].ean);
+        setProduct(p);
+        setScanState("found");
+      } else if (locals.length > 1) {
+        // Encontrou varios, mostrar lista
+        setSearchResults(locals);
+        setScanState("idle");
+      } else {
+        // 2. Nao encontrou no local, tentar buscar direto no ERP por EAN (se parecer um EAN)
+        const isNumeric = /^\d+$/.test(query);
+        if (isNumeric) {
+          const p = await fetchProductByEan(config, query);
+          setProduct(p);
+          setScanState("found");
+          // Aproveita para salvar no banco local se nao estava la
+          await window.easyPrint.dbSyncProducts([p]);
+        } else {
+          setError("Produto não encontrado no banco local.");
+          setScanState("error");
+        }
+      }
+
+      if (product || locals.length === 1) {
+        const p = product || locals[0];
+        const entry: HistoryEntry = { ean: p.ean, descricao: p.descricao, at: Date.now() };
+        storage.pushHistory(entry);
+        setHistory(storage.getHistory());
+      }
     } catch (e) {
       const msg = e instanceof VFError ? e.message : "Erro inesperado";
       setErrorDebug(e instanceof VFError ? e.debug : null);
       setError(msg);
       setScanState("error");
       toast.error(msg);
+    } finally {
+      setLoading(false);
+      focusInput();
+    }
+  };
+
+  const selectProduct = async (p: Product) => {
+    setLoading(true);
+    setScanState("searching");
+    setSearchResults([]);
+    try {
+      const full = await fetchProductByEan(config, p.ean);
+      setProduct(full);
+      setScanState("found");
+      const entry: HistoryEntry = { ean: full.ean, descricao: full.descricao, at: Date.now() };
+      storage.pushHistory(entry);
+      setHistory(storage.getHistory());
+    } catch (e) {
+      toast.error("Erro ao carregar detalhes do produto");
+      setScanState("error");
     } finally {
       setLoading(false);
       focusInput();
@@ -530,6 +580,32 @@ const Index = () => {
 
               <ScanStateBar state={scanState} loading={loading} />
 
+              {searchResults.length > 0 && (
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <History className="h-4 w-4" /> Resultados da busca ({searchResults.length})
+                  </h3>
+                  <div className="grid gap-2 max-h-96 overflow-auto pr-1">
+                    {searchResults.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => selectProduct(p)}
+                        className="flex items-center justify-between p-3 rounded-md border bg-background hover:bg-accent transition-colors text-left"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-mono opacity-70">{p.ean}</div>
+                          <div className="text-sm font-medium truncate">{p.descricao}</div>
+                          <div className="text-[10px] text-muted-foreground">{p.secao} / {p.grupo}</div>
+                        </div>
+                        <div className="shrink-0 text-sm font-bold text-primary">
+                          Selecionar
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-lg border bg-card p-4">
                 <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <Tag className="h-4 w-4 text-primary" /> Produto
@@ -546,14 +622,26 @@ const Index = () => {
                   </div>
                 )}
                 {!loading && !error && product && (
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <Row label="EAN" value={product.ean} mono />
-                    <Row label="Cod. interno" value={product.codigoInterno} mono />
-                    <Row label="Descricao" value={product.descricao} full />
-                    <Row label="Secao" value={product.secao || product.grupo} />
-                    <Row label="Estoque" value={product.estoque?.toString()} />
-                    <Row label="Preco varejo" value={product.precoVarejo != null ? `R$ ${product.precoVarejo.toFixed(2)}` : undefined} bold />
-                    <Row label="Preco atacado" value={product.precoAtacado != null ? `R$ ${product.precoAtacado.toFixed(2)}` : undefined} />
+                  <div className="flex gap-3">
+                    {product.imageUrl && (
+                      <div className="shrink-0">
+                        <img
+                          src={product.imageUrl}
+                          alt={product.descricao}
+                          className="h-24 w-24 rounded-md border object-contain bg-muted/30"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 grid grid-cols-2 gap-2 text-sm">
+                      <Row label="EAN" value={product.ean} mono />
+                      <Row label="Cod. interno" value={product.codigoInterno} mono />
+                      <Row label="Descricao" value={product.descricao} full />
+                      <Row label="Secao" value={product.secao || product.grupo} />
+                      <Row label="Estoque" value={product.estoque?.toString()} />
+                      <Row label="Preco varejo" value={product.precoVarejo != null ? `R$ ${product.precoVarejo.toFixed(2)}` : undefined} bold />
+                      <Row label="Preco atacado" value={product.precoAtacado != null ? `R$ ${product.precoAtacado.toFixed(2)}` : undefined} />
+                    </div>
                   </div>
                 )}
                 {!loading && !error && !product && (

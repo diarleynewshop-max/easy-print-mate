@@ -9,6 +9,7 @@ export interface Product {
   grupo?: string;
   estoque?: number;
   codigoInterno?: string;
+  imageUrl?: string;
 }
 
 export type LabelFieldKey =

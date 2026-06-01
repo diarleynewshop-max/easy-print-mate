@@ -1,7 +1,7 @@
 {
   "name": "vite_react_shadcn_ts",
   "private": true,
-  "version": "1.4.1",
+  "version": "1.5.3",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -94,7 +94,8 @@
       "package.json"
     ],
     "asarUnpack": [
-      "scripts/print-raw.ps1"
+      "scripts/print-raw.ps1",
+      "node_modules/better-sqlite3"
     ],
     "win": {
       "icon": "build/icon.ico",

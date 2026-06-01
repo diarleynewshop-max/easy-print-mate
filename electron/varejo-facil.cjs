@@ -188,10 +188,21 @@ async function buscarPrecos(baseUrl, token, produtoId, lojaId, debug) {
   if (!result.response.ok) return { precoVarejo: 0, precoAtacado: 0 };
   const precos = getItems(result.data);
   const selecionado = lojaId ? precos.find((preco) => Number(preco.lojaId) === lojaId) || precos[0] : precos[0];
-  return {
-    precoVarejo: normalizarPreco(selecionado?.precoVenda1, selecionado?.precoOferta1),
-    precoAtacado: normalizarPreco(selecionado?.precoVenda2 ?? selecionado?.precoAtacado, selecionado?.precoOferta2),
-  };
+
+  if (selecionado) {
+    const keys = Object.keys(selecionado).filter((k) => /preco|venda|oferta|atacado/i.test(k));
+    debug.push({ step: "preco-fields", path: `produto/${produtoId}/precos`, message: keys.map((k) => `${k}=${JSON.stringify(selecionado[k])}`).join("; ") });
+  }
+
+  const precoVarejo = normalizarPreco(
+    selecionado?.precoVenda1 ?? selecionado?.precoVenda ?? selecionado?.preco ?? selecionado?.precoVenda1Loja,
+    selecionado?.precoOferta1 ?? selecionado?.precoOferta ?? selecionado?.precoPromocional,
+  );
+  const precoAtacado = normalizarPreco(
+    selecionado?.precoVenda2 ?? selecionado?.precoAtacado ?? selecionado?.precoVenda2Loja,
+    selecionado?.precoOferta2,
+  );
+  return { precoVarejo, precoAtacado };
 }
 
 async function buscarEstoque(baseUrl, token, produtoId, lojaId, debug) {
@@ -258,6 +269,12 @@ async function consultarProduto({ codigo, empresa: empresaInput, companyName, lo
     buscarGrupo(baseUrl, token, produto.secaoId, produto.grupoId, debug).catch(() => ""),
   ]);
 
+  const imageUrl = produto.urlFoto || produto.fotoPrincipal || produto.urlImagem || produto.imagem || produto.foto || undefined;
+  if (!imageUrl) {
+    const imageKeys = Object.keys(produto).filter((k) => /foto|imagem|image|photo|url/i.test(k));
+    if (imageKeys.length) debug.push({ step: "image-fields-found", path: "produto", message: imageKeys.map((k) => `${k}=${JSON.stringify(produto[k])}`).join("; ") });
+  }
+
   return {
     product: {
       id: produtoId,
@@ -270,6 +287,7 @@ async function consultarProduto({ codigo, empresa: empresaInput, companyName, lo
       precoVarejo: precos.precoVarejo,
       precoAtacado: precos.precoAtacado,
       estoque,
+      imageUrl: imageUrl || undefined,
     },
     empresa,
     lojaId: Number.isFinite(lojaId) ? lojaId : null,
@@ -277,4 +295,39 @@ async function consultarProduto({ codigo, empresa: empresaInput, companyName, lo
   };
 }
 
-module.exports = { consultarProduto, loadErpEnv };
+async function listarProdutosPaginado({ empresa: empresaInput, companyName, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword, pagina = 1, quantidade = 100, dataAlteracao }) {
+  const empresa = normalizeEmpresa(companyName || empresaInput);
+  const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
+  const debug = [];
+  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
+  
+  let requestPath = `/v1/produto/produtos?page=${pagina}&count=${quantidade}`;
+  if (dataAlteracao) {
+    // Formato esperado: YYYY-MM-DDTHH:mm:ss
+    requestPath += `&dataAlteracao=${encodeURIComponent(dataAlteracao)}`;
+  }
+  
+  const result = await fetchErpJson(baseUrl, token, requestPath, debug, `listar-produtos:${pagina}`);
+  
+  if (!result.response.ok) {
+    throw new Error(`Erro ao listar produtos: ${result.response.status}`);
+  }
+
+  const items = getItems(result.data);
+  return {
+    items: items.map(p => ({
+      id: p.id,
+      ean: p.gtin || p.codigoBarras || "",
+      codigo_barras: p.gtin || p.codigoBarras || "",
+      descricao: p.descricao || p.descricaoReduzida || "",
+      codigoInterno: p.codigoInterno || "",
+      secao: p.secao?.descricao || "",
+      grupo: p.grupo?.descricao || "",
+      ultimaAlteracao: p.dataAtualizacao || p.dataAlteracao || null
+    })),
+    total: result.data?.total || items.length,
+    debug
+  };
+}
+
+module.exports = { consultarProduto, loadErpEnv, listarProdutosPaginado };

@@ -4,10 +4,61 @@ const fsp = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const { consultarProduto, loadErpEnv } = require("./varejo-facil.cjs");
+const { consultarProduto, loadErpEnv, listarProdutosPaginado } = require("./varejo-facil.cjs");
 const { autoUpdater } = require("electron-updater");
+const Database = require("better-sqlite3");
 
 const RAW_PRINTER_NAME = process.env.RAW_PRINTER_NAME || "ELGIN L42PRO FULL";
+
+let db;
+
+function initDb() {
+  const dataDir = getDataDir();
+  fs.mkdirSync(dataDir, { recursive: true });
+  const dbPath = path.join(dataDir, "easy-print.db");
+  db = new Database(dbPath);
+  
+  // Criação da tabela de produtos otimizada para busca
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS produtos (
+      id TEXT PRIMARY KEY,
+      ean TEXT,
+      codigo_barras TEXT,
+      descricao TEXT,
+      codigo_interno TEXT,
+      secao TEXT,
+      grupo TEXT,
+      preco_varejo REAL,
+      preco_atacado REAL,
+      estoque REAL,
+      image_url TEXT,
+      ultima_alteracao DATETIME,
+      sincronizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sync_meta (
+      chave TEXT PRIMARY KEY,
+      valor TEXT,
+      atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_produtos_ean ON produtos(ean);
+    CREATE INDEX IF NOT EXISTS idx_produtos_descricao ON produtos(descricao);
+    CREATE INDEX IF NOT EXISTS idx_produtos_alteracao ON produtos(ultima_alteracao);
+  `);
+
+  // Migração: Garante que a coluna ultima_alteracao exista (para quem já tinha o app instalado)
+  const tableInfo = db.prepare("PRAGMA table_info(produtos)").all();
+  const hasUltimaAlteracao = tableInfo.some(col => col.name === "ultima_alteracao");
+  if (!hasUltimaAlteracao) {
+    try {
+      db.exec("ALTER TABLE produtos ADD COLUMN ultima_alteracao DATETIME");
+      console.log("Coluna ultima_alteracao adicionada com sucesso.");
+    } catch (e) {
+      console.error("Erro ao adicionar coluna: ", e.message);
+    }
+  }
+}
 
 const ERP_ENV_TEMPLATE = [
   "# Preencha conforme o cliente. Pode usar usuario/senha ou token.",
@@ -302,6 +353,18 @@ ipcMain.handle("erp:fetch-product", async (_event, config, codigo) => {
   }
 });
 
+ipcMain.handle("erp:list-products", async (_event, config, pagina, quantidade, dataAlteracao) => {
+  try {
+    return await listarProdutosPaginado({ ...config, pagina, quantidade, dataAlteracao });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error("Erro desconhecido");
+    throw new Error(JSON.stringify({
+      message: err.message,
+      status: err.status,
+    }));
+  }
+});
+
 ipcMain.handle("print:raw-prn", async (_event, content, printerName = RAW_PRINTER_NAME) => {
   if (!content) throw new Error("Conteudo PRN vazio");
   const selectedPrinter = String(printerName || RAW_PRINTER_NAME).trim() || RAW_PRINTER_NAME;
@@ -318,6 +381,83 @@ ipcMain.handle("print:raw-prn", async (_event, content, printerName = RAW_PRINTE
     throw new Error(`Falha ao imprimir em ${selectedPrinter}. PRN salvo em ${savedPath}. ${message}`);
   } finally {
     await fsp.rm(tempPath, { force: true });
+  }
+});
+
+ipcMain.handle("db:sync-products", (_event, products) => {
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO produtos (
+      id, ean, codigo_barras, descricao, codigo_interno, secao, grupo, preco_varejo, preco_atacado, estoque, image_url, ultima_alteracao
+    ) VALUES (
+      @id, @ean, @codigo_barras, @descricao, @codigo_interno, @secao, @grupo, @preco_varejo, @preco_atacado, @estoque, @image_url, @ultima_alteracao
+    )
+  `);
+
+  const transaction = db.transaction((items) => {
+    for (const item of items) {
+      insert.run({
+        id: String(item.id),
+        ean: String(item.ean || ""),
+        codigo_barras: String(item.codigo_barras || ""),
+        descricao: String(item.descricao || ""),
+        codigo_interno: String(item.codigoInterno || ""),
+        secao: String(item.secao || ""),
+        grupo: String(item.grupo || ""),
+        preco_varejo: Number(item.precoVarejo || 0),
+        preco_atacado: Number(item.precoAtacado || 0),
+        estoque: Number(item.estoque || 0),
+        image_url: String(item.imageUrl || ""),
+        ultima_alteracao: item.ultimaAlteracao || null
+      });
+    }
+  });
+
+  transaction(products);
+  return { success: true, count: products.length };
+});
+
+ipcMain.handle("db:search-products", (_event, query) => {
+  const q = `%${query}%`;
+  const stmt = db.prepare(`
+    SELECT * FROM produtos 
+    WHERE descricao LIKE ? OR ean LIKE ? OR codigo_interno LIKE ?
+    LIMIT 50
+  `);
+  const rows = stmt.all(q, q, q);
+  return rows.map(row => ({
+    id: row.id,
+    ean: row.ean,
+    codigo_barras: row.codigo_barras,
+    descricao: row.descricao,
+    codigoInterno: row.codigo_interno,
+    secao: row.secao,
+    grupo: row.grupo,
+    precoVarejo: row.preco_varejo,
+    precoAtacado: row.preco_atacado,
+    estoque: row.estoque,
+    imageUrl: row.image_url
+  }));
+});
+
+ipcMain.handle("db:get-last-sync", (_event, chave) => {
+  const stmt = db.prepare("SELECT valor FROM sync_meta WHERE chave = ?");
+  const row = stmt.get(chave);
+  return row ? row.valor : null;
+});
+
+ipcMain.handle("db:set-last-sync", (_event, chave, valor) => {
+  const stmt = db.prepare("INSERT OR REPLACE INTO sync_meta (chave, valor, atualizado_em) VALUES (?, ?, CURRENT_TIMESTAMP)");
+  stmt.run(chave, valor);
+  return true;
+});
+
+ipcMain.handle("app:check-for-updates", async () => {
+  if (!app.isPackaged) return { message: "Modo desenvolvimento - atualização desativada" };
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { success: true, updateInfo: result?.updateInfo };
+  } catch (error) {
+    return { success: false, message: error.message };
   }
 });
 
@@ -358,6 +498,7 @@ function setupAutoUpdater() {
 }
 
 app.whenReady().then(() => {
+  initDb();
   createWindow();
   setupAutoUpdater();
 });
