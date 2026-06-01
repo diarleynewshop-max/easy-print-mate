@@ -13,50 +13,60 @@ const RAW_PRINTER_NAME = process.env.RAW_PRINTER_NAME || "ELGIN L42PRO FULL";
 let db;
 
 function initDb() {
-  const dataDir = getDataDir();
-  fs.mkdirSync(dataDir, { recursive: true });
-  const dbPath = path.join(dataDir, "easy-print.db");
-  db = new Database(dbPath);
-  
-  // Criação da tabela de produtos otimizada para busca
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS produtos (
-      id TEXT PRIMARY KEY,
-      ean TEXT,
-      codigo_barras TEXT,
-      descricao TEXT,
-      codigo_interno TEXT,
-      secao TEXT,
-      grupo TEXT,
-      preco_varejo REAL,
-      preco_atacado REAL,
-      estoque REAL,
-      image_url TEXT,
-      ultima_alteracao DATETIME,
-      sincronizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+  try {
+    const dataDir = getDataDir();
+    fs.mkdirSync(dataDir, { recursive: true });
+    const dbPath = path.join(dataDir, "easy-print.db");
+    db = new Database(dbPath);
+    
+    // Criação das tabelas base
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS produtos (
+        id TEXT PRIMARY KEY,
+        ean TEXT,
+        codigo_barras TEXT,
+        descricao TEXT,
+        codigo_interno TEXT,
+        secao TEXT,
+        grupo TEXT,
+        preco_varejo REAL,
+        preco_atacado REAL,
+        estoque REAL,
+        image_url TEXT,
+        ultima_alteracao DATETIME,
+        sincronizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
 
-    CREATE TABLE IF NOT EXISTS sync_meta (
-      chave TEXT PRIMARY KEY,
-      valor TEXT,
-      atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      CREATE TABLE IF NOT EXISTS sync_meta (
+        chave TEXT PRIMARY KEY,
+        valor TEXT,
+        atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
 
-    CREATE INDEX IF NOT EXISTS idx_produtos_ean ON produtos(ean);
-    CREATE INDEX IF NOT EXISTS idx_produtos_descricao ON produtos(descricao);
-    CREATE INDEX IF NOT EXISTS idx_produtos_alteracao ON produtos(ultima_alteracao);
-  `);
+      CREATE INDEX IF NOT EXISTS idx_produtos_ean ON produtos(ean);
+      CREATE INDEX IF NOT EXISTS idx_produtos_descricao ON produtos(descricao);
+    `);
 
-  // Migração: Garante que a coluna ultima_alteracao exista (para quem já tinha o app instalado)
-  const tableInfo = db.prepare("PRAGMA table_info(produtos)").all();
-  const hasUltimaAlteracao = tableInfo.some(col => col.name === "ultima_alteracao");
-  if (!hasUltimaAlteracao) {
-    try {
-      db.exec("ALTER TABLE produtos ADD COLUMN ultima_alteracao DATETIME");
-      console.log("Coluna ultima_alteracao adicionada com sucesso.");
-    } catch (e) {
-      console.error("Erro ao adicionar coluna: ", e.message);
+    // Migração: Garante que a coluna ultima_alteracao exista (para quem já tinha o app instalado)
+    const tableInfo = db.prepare("PRAGMA table_info(produtos)").all();
+    const hasUltimaAlteracao = tableInfo.some(col => col.name === "ultima_alteracao");
+    if (!hasUltimaAlteracao) {
+      try {
+        db.exec("ALTER TABLE produtos ADD COLUMN ultima_alteracao DATETIME");
+      } catch (e) {
+        console.error("Erro ao adicionar coluna: ", e.message);
+      }
     }
+
+    // Cria o índice da coluna de alteração apenas após garantir que ela existe
+    db.exec("CREATE INDEX IF NOT EXISTS idx_produtos_alteracao ON produtos(ultima_alteracao)");
+
+  } catch (error) {
+    console.error("Falha ao inicializar o banco de dados:", error);
+    dialog.showErrorBox(
+      "Erro no Banco de Dados",
+      "Não foi possível iniciar o banco de dados local. Tente reiniciar o computador ou apagar o arquivo easy-print.db em seus Documentos.\n\nErro: " + error.message
+    );
   }
 }
 
