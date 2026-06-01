@@ -16,6 +16,7 @@ interface Props {
 
 export function ApiConfig({ config, onSave, printers = [] }: Props) {
   const [syncing, setSyncing] = useState(false);
+  const isSyncingRef = useRef(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncStatus, setSyncStatus] = useState("");
   const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -42,7 +43,8 @@ export function ApiConfig({ config, onSave, printers = [] }: Props) {
   };
 
   const syncDatabase = async () => {
-    if (syncing) return;
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
     setSyncing(true);
     setSyncProgress(0);
     setSyncStatus("Verificando última sincronização...");
@@ -59,6 +61,9 @@ export function ApiConfig({ config, onSave, printers = [] }: Props) {
       let newestSyncTimestamp = lastSync;
 
       while (hasMore) {
+        // Verifica se ainda devemos continuar (segurança básica)
+        if (!isSyncingRef.current) break;
+
         setSyncStatus(`Buscando lote ${page}...`);
         const result = await window.easyPrint.erpListProducts(c, page, count, lastSync || undefined);
         
@@ -103,6 +108,7 @@ export function ApiConfig({ config, onSave, printers = [] }: Props) {
       console.error(error);
       toast.error("Erro na sincronizacao. Verifique a internet e as credenciais.");
     } finally {
+      isSyncingRef.current = false;
       setSyncing(false);
       setSyncStatus("");
     }
