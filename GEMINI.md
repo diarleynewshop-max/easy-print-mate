@@ -22,6 +22,16 @@ Este arquivo registra as decisões arquiteturais e o progresso das correções f
 - **Elgin Branca (28x13.5mm/15mm):** Configurada com recuo de 3mm, margens RTL e rotação 180° conforme homologação do usuário (arquivo `etiqueta boa.json`).
 - **Anel e Amarela:** Atualizadas para seguir o novo padrão de centralização e escala.
 
+### 5. Correções de UI e Sincronização (v1.5.5)
+- **Fix Tela Branca:** Corrigido erro de `ReferenceError: useRef is not defined` na tela de Configuração API.
+- **Sincronização Paginada:** Corrigido o bridge do Electron (`preload.cjs`) para suportar o parâmetro `dataAlteracao` (lastSync), permitindo sincronizações incrementais reais.
+- **Tipagem:** Atualizado `window.d.ts` e `Product` para refletir as novas capacidades de sincronização e limpar erros de build.
+- **Limpeza:** Removido arquivo de tipagem duplicado e desatualizado `desktop.d.ts`.
+
+### 6. Descoberta Automática de Produtos (v1.6.0)
+- **Sequential Probing:** Implementado hook `useProductDiscovery` que monitora o maior ID numérico no banco local e tenta buscar o próximo ID (`maxId + 1`) no ERP a cada 30 minutos.
+- **Background Sync:** Novos produtos encontrados via sequência são salvos automaticamente no banco local, permitindo que fiquem disponíveis para busca instantânea por descrição ou código.
+
 ## Comandos Úteis
 - **Desenvolvimento:** `npm run dev`
 - **Build Setup:** `npm run dist:setup` (Gera v1.4.x em `release/`)

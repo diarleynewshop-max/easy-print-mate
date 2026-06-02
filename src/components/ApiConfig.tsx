@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { VFConfig } from "@/types/label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

@@ -14,6 +14,7 @@ import { LabelEditor } from "@/components/LabelEditor";
 import { ApiConfig } from "@/components/ApiConfig";
 import { Metrics } from "@/components/Metrics";
 import { A4Module } from "@/components/A4Module";
+import { useProductDiscovery } from "@/hooks/useProductDiscovery";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -43,6 +44,7 @@ import { cn } from "@/lib/utils";
 type View = "scan" | "editor" | "config" | "metrics" | "a4";
 
 const Index = () => {
+  useProductDiscovery();
   const inputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("scan");
   const [code, setCode] = useState("");

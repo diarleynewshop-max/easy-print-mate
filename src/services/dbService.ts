@@ -29,5 +29,15 @@ export const dbService = {
   async setLastSync(chave: string, valor: string): Promise<boolean> {
     if (!window.easyPrint?.isDesktop) return false;
     return await window.easyPrint.dbSetLastSync(chave, valor);
+  },
+
+  async getMaxId(): Promise<number> {
+    if (!window.easyPrint?.isDesktop) return 0;
+    try {
+      return await window.easyPrint.dbGetMaxId();
+    } catch (error) {
+      console.error("Erro ao buscar maior ID no banco local:", error);
+      return 0;
+    }
   }
 };

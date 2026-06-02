@@ -10,6 +10,7 @@ export interface Product {
   estoque?: number;
   codigoInterno?: string;
   imageUrl?: string;
+  ultimaAlteracao?: string;
 }
 
 export type LabelFieldKey =

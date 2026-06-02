@@ -15,13 +15,14 @@ export interface EasyPrintBridge {
   appendPrintEvent: (event: PrintEvent) => Promise<{ ok: boolean; filePath: string }>;
   readPrintEvents: () => Promise<PrintEvent[]>;
   fetchProductByEan: (config: VFConfig, codigo: string) => Promise<{ product: Product; debug: any }>;
-  erpListProducts: (config: VFConfig, pagina: number, quantidade: number) => Promise<{ items: Product[]; total: number; debug: any }>;
+  erpListProducts: (config: VFConfig, pagina: number, quantidade: number, lastSync?: string) => Promise<{ items: Product[]; total: number; debug: any }>;
   printRawPrn: (content: string, printerName: string) => Promise<{ ok: boolean; savedPath: string }>;
   printHealth: (printerName: string) => Promise<{ ok: boolean; printerName: string; printerFound: boolean }>;
   dbSyncProducts: (products: Product[]) => Promise<{ success: boolean; count: number }>;
   dbSearchProducts: (query: string) => Promise<Product[]>;
   dbGetLastSync: (chave: string) => Promise<string | null>;
   dbSetLastSync: (chave: string, valor: string) => Promise<boolean>;
+  dbGetMaxId: () => Promise<number>;
   appCheckForUpdates: () => Promise<{ success: boolean; updateInfo?: any; message?: string }>;
 }
 

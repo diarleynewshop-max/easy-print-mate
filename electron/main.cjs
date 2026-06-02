@@ -461,6 +461,12 @@ ipcMain.handle("db:set-last-sync", (_event, chave, valor) => {
   return true;
 });
 
+ipcMain.handle("db:get-max-id", () => {
+  const stmt = db.prepare("SELECT MAX(CAST(id AS INTEGER)) as maxId FROM produtos");
+  const row = stmt.get();
+  return row ? (row.maxId || 0) : 0;
+});
+
 ipcMain.handle("app:check-for-updates", async () => {
   if (!app.isPackaged) return { message: "Modo desenvolvimento - atualização desativada" };
   try {
