@@ -40,6 +40,7 @@ export function A4Module({ config }: Props) {
   // Fila de produtos para preenchimento sequencial
   const [productQueue, setProductQueue] = useState<Product[]>([]);
   const [repeatMode, setRepeatMode] = useState(false);
+  const [zoom, setZoom] = useState(1.4);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const active = templates.find((t) => t.id === activeId) || templates[0];
@@ -323,10 +324,21 @@ export function A4Module({ config }: Props) {
             </div>
           </section>
 
-          <aside className="rounded-lg border bg-card p-3 flex flex-col h-full">
-            <Label className="text-xs uppercase opacity-60 mb-2">Visualização da 1ª Página</Label>
+          <aside className="rounded-lg border bg-card p-3 flex flex-col h-full overflow-hidden">
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-xs uppercase opacity-60">Visualização da 1ª Página</Label>
+              <div className="flex items-center gap-1 bg-muted/50 rounded-md p-0.5">
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setZoom(z => Math.max(0.4, z - 0.2))}>
+                  <Minus className="h-3 w-3" />
+                </Button>
+                <span className="text-[10px] font-bold w-9 text-center">{Math.round(zoom * 100)}%</span>
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setZoom(z => Math.min(3, z + 0.2))}>
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
             <div className="flex-1 overflow-auto bg-muted/30 rounded border p-2">
-               <A4Preview template={active} blocks={blocks} />
+               <A4Preview template={active} blocks={blocks} zoom={zoom} />
             </div>
             <p className="mt-2 text-center text-[10px] text-muted-foreground italic">
               * A visualização mostra como os produtos serão organizados na folha.
@@ -340,15 +352,15 @@ export function A4Module({ config }: Props) {
 
 const PREVIEW_SCALE = 1.6;
 
-function A4Preview({ template, blocks }: { template: A4Template; blocks: A4FilledBlock[] }) {
+function A4Preview({ template, blocks, zoom }: { template: A4Template; blocks: A4FilledBlock[]; zoom: number }) {
   const rects = useMemo(() => getBlockRects(template), [template]);
   
   return (
     <div
       className="mx-auto bg-white shadow-xl origin-top"
       style={{
-        width: A4_WIDTH_MM * PREVIEW_SCALE,
-        height: A4_HEIGHT_MM * PREVIEW_SCALE,
+        width: A4_WIDTH_MM * zoom,
+        height: A4_HEIGHT_MM * zoom,
         position: "relative",
       }}
     >
@@ -361,10 +373,10 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
             key={i}
             className="absolute border border-dashed border-muted-foreground/20 overflow-hidden"
             style={{
-              left: rect.x * PREVIEW_SCALE,
-              top: rect.y * PREVIEW_SCALE,
-              width: rect.width * PREVIEW_SCALE,
-              height: rect.height * PREVIEW_SCALE,
+              left: rect.x * zoom,
+              top: rect.y * zoom,
+              width: rect.width * zoom,
+              height: rect.height * zoom,
             }}
           >
             {template.showBorder && (
@@ -374,8 +386,8 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
             <div
               className="absolute"
               style={{
-                left: (render.x - rect.x) * PREVIEW_SCALE,
-                top: (render.y - rect.y) * PREVIEW_SCALE,
+                left: (render.x - rect.x) * zoom,
+                top: (render.y - rect.y) * zoom,
               }}
             >
               {template.elements.map((el) => {
@@ -390,10 +402,10 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
                     key={el.id}
                     className="absolute overflow-hidden"
                     style={{
-                      left: el.x * render.scale * PREVIEW_SCALE,
-                      top: el.y * render.scale * PREVIEW_SCALE,
-                      width: el.widthMm * render.scale * PREVIEW_SCALE,
-                      height: el.heightMm * render.scale * PREVIEW_SCALE,
+                      left: el.x * render.scale * zoom,
+                      top: el.y * render.scale * zoom,
+                      width: el.widthMm * render.scale * zoom,
+                      height: el.heightMm * render.scale * zoom,
                     }}
                   >
                     {el.type === "shape" ? (
@@ -407,13 +419,13 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
                         style={
                           el.shapeKind === "line"
                             ? {
-                                borderTop: `${Math.max(1, (el.strokeWidthMm || 1) * render.scale * PREVIEW_SCALE)}px solid ${el.strokeColor || "#000"}`,
+                                borderTop: `${Math.max(1, (el.strokeWidthMm || 1) * render.scale * zoom)}px solid ${el.strokeColor || "#000"}`,
                                 marginTop: "50%",
                               }
                             : {
                                 backgroundColor: el.fillColor || "#e60000",
                                 borderColor: el.strokeColor || el.fillColor || "#e60000",
-                                borderWidth: `${(el.strokeWidthMm || 0) * render.scale * PREVIEW_SCALE}px`,
+                                borderWidth: `${(el.strokeWidthMm || 0) * render.scale * zoom}px`,
                                 opacity: el.opacity ?? 1,
                               }
                         }
@@ -441,7 +453,7 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
                     ) : (
                       <div
                         style={{
-                          fontSize: `${el.fontSize * render.scale * 0.42}pt`, // Ajuste de escala para pt em px no preview
+                          fontSize: `${el.fontSize * render.scale * (zoom / 4)}pt`, // Ajuste de escala proporcional ao zoom
                           fontWeight: el.bold ? 700 : 400,
                           fontStyle: el.italic ? "italic" : "normal",
                           textAlign: el.align || "left",

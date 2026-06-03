@@ -48,6 +48,7 @@ function uid() {
 
 export function A4Editor({ template, product, onChange }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(2.4);
   const blockRects = useMemo(() => getBlockRects(template), [template]);
   const firstBlock = blockRects[0];
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -183,8 +184,8 @@ export function A4Editor({ template, product, onChange }: Props) {
     const start = { x: el.x, y: el.y, w: el.widthMm, h: el.heightMm };
 
     const onMove = (ev: PointerEvent) => {
-      const dx = (ev.clientX - startX) / MM_TO_PX;
-      const dy = (ev.clientY - startY) / MM_TO_PX;
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
       if (mode === "move") {
         updateElement(el.id, {
           x: Math.max(0, Math.round((start.x + dx) * 10) / 10),
@@ -318,22 +319,34 @@ export function A4Editor({ template, product, onChange }: Props) {
         </Panel>
       </div>
 
-      <div className="overflow-auto rounded-lg border bg-muted/30 p-4">
-        <div className="mx-auto" style={{ width: A4_WIDTH_MM * MM_TO_PX }}>
-          <div className="mb-2 text-center text-[11px] opacity-60">
-            A4 210x297mm - {template.rows}x{template.cols} - edite o bloco 1
+      <div className="flex flex-col min-h-0 rounded-lg border bg-muted/30 overflow-hidden">
+        <div className="flex shrink-0 items-center justify-between border-b bg-card/50 px-4 py-1.5">
+          <div className="text-[11px] font-medium opacity-60 uppercase tracking-wider">
+            Canvas A4 - Edite o Bloco 1
           </div>
-          <div className="relative bg-white shadow" style={{ width: A4_WIDTH_MM * MM_TO_PX, height: A4_HEIGHT_MM * MM_TO_PX }}>
+          <div className="flex items-center gap-1 bg-background rounded-md border p-0.5 shadow-sm">
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setZoom(z => Math.max(0.4, z - 0.2))}>
+              <Minus className="h-3 w-3" />
+            </Button>
+            <span className="text-[10px] font-bold w-9 text-center">{Math.round((zoom / 2.4) * 100)}%</span>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setZoom(z => Math.min(6, z + 0.2))}>
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-8 flex justify-center">
+          <div className="relative bg-white shadow-2xl" style={{ width: A4_WIDTH_MM * zoom, height: A4_HEIGHT_MM * zoom }}>
             {blockRects.map((rect, blockIdx) => (
               <div
                 key={blockIdx}
                 className={cn("absolute border border-dashed border-primary/40", blockIdx === 0 ? "bg-white" : "bg-muted/10")}
-                style={{ left: rect.x * MM_TO_PX, top: rect.y * MM_TO_PX, width: rect.width * MM_TO_PX, height: rect.height * MM_TO_PX }}
+                style={{ left: rect.x * zoom, top: rect.y * zoom, width: rect.width * zoom, height: rect.height * zoom }}
               >
                 <div className="absolute left-1 top-1 z-20 rounded bg-primary/10 px-1 text-[9px] text-primary">Bloco {blockIdx + 1}</div>
                 <div
                   className={cn("absolute", blockIdx > 0 && "opacity-40")}
-                  style={{ left: template.paddingMm * MM_TO_PX, top: template.paddingMm * MM_TO_PX, right: template.paddingMm * MM_TO_PX, bottom: template.paddingMm * MM_TO_PX }}
+                  style={{ left: template.paddingMm * zoom, top: template.paddingMm * zoom, right: template.paddingMm * zoom, bottom: template.paddingMm * zoom }}
                   onClick={() => blockIdx === 0 && setSelectedId(null)}
                 >
                   {template.elements.map((el) => (
@@ -343,6 +356,7 @@ export function A4Editor({ template, product, onChange }: Props) {
                       product={product}
                       selected={blockIdx === 0 && selectedId === el.id}
                       ghost={blockIdx > 0}
+                      zoom={zoom}
                       onPointerDown={(e, mode) => blockIdx === 0 && startDrag(e, el, mode)}
                     />
                   ))}
@@ -404,12 +418,14 @@ function ElementBox({
   product,
   selected,
   ghost,
+  zoom,
   onPointerDown,
 }: {
   element: A4Element;
   product: Product | null;
   selected?: boolean;
   ghost?: boolean;
+  zoom: number;
   onPointerDown?: (e: React.PointerEvent, mode: "move" | "resize") => void;
 }) {
   const text =
@@ -430,28 +446,30 @@ function ElementBox({
         !ghost && "cursor-move",
         selected ? "outline outline-2 outline-primary" : !ghost && "outline-dashed outline-1 outline-primary/30",
       )}
-      style={{ left: element.x * MM_TO_PX, top: element.y * MM_TO_PX, width: element.widthMm * MM_TO_PX, height: element.heightMm * MM_TO_PX }}
+      style={{ left: element.x * zoom, top: element.y * zoom, width: element.widthMm * zoom, height: element.heightMm * zoom }}
     >
       {element.type === "shape" ? (
-        <ShapeBox element={element} />
-      ) : element.type === "image" ? (
-        element.imageDataUrl ? (
+        <ShapeBox element={element} zoom={zoom} />
+      ) : element.type === "image" || (element.type === "dynamic" && element.field === "imageUrl") ? (
+        (element.type === "image" ? element.imageDataUrl : product?.imageUrl) ? (
           <img
-            src={element.imageDataUrl}
+            src={element.type === "image" ? element.imageDataUrl : product?.imageUrl}
             alt={element.imageName || "arte"}
             className="h-full w-full select-none"
             draggable={false}
             style={{ objectFit: element.imageFit === "contain" ? "contain" : element.imageFit === "cover" ? "cover" : "fill" }}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-muted/40 text-[10px] opacity-80">Imagem</div>
+          <div className="flex h-full w-full items-center justify-center bg-muted/40 text-[10px] opacity-80">
+             {element.field === "imageUrl" ? "Foto ERP" : "Imagem"}
+          </div>
         )
       ) : element.type === "barcode" ? (
         <div className="flex h-full w-full items-center justify-center bg-muted/40 text-[10px] opacity-80">||||| {product?.codigo_barras || product?.ean || "EAN"}</div>
       ) : (
         <div
           style={{
-            fontSize: `${element.fontSize}pt`,
+            fontSize: `${element.fontSize * (zoom / 2.4)}pt`, // Fonte proporcional ao zoom
             fontWeight: element.bold ? 700 : 400,
             fontStyle: element.italic ? "italic" : "normal",
             textAlign: element.align || "left",
@@ -472,16 +490,16 @@ function ElementBox({
   );
 }
 
-function ShapeBox({ element }: { element: A4Element }) {
+function ShapeBox({ element, zoom }: { element: A4Element; zoom: number }) {
   const common = {
     backgroundColor: element.shapeKind === "line" ? "transparent" : element.fillColor || "#e60000",
     borderColor: element.strokeColor || element.fillColor || "#e60000",
-    borderWidth: `${(element.strokeWidthMm || 0) * MM_TO_PX}px`,
+    borderWidth: `${(element.strokeWidthMm || 0) * zoom}px`,
     opacity: element.opacity ?? 1,
   };
   if (element.shapeKind === "circle") return <div className="h-full w-full rounded-full border" style={common} />;
   if (element.shapeKind === "line") {
-    return <div className="h-full w-full" style={{ borderTop: `${Math.max(1, (element.strokeWidthMm || 1) * MM_TO_PX)}px solid ${element.strokeColor || "#000"}`, marginTop: "50%" }} />;
+    return <div className="h-full w-full" style={{ borderTop: `${Math.max(1, (element.strokeWidthMm || 1) * zoom)}px solid ${element.strokeColor || "#000"}`, marginTop: "50%" }} />;
   }
   return <div className={cn("h-full w-full border", element.shapeKind === "roundRect" && "rounded-full")} style={common} />;
 }
