@@ -40,8 +40,11 @@ export function validateTemplate(t: LabelTemplate): ValidationIssue[] {
     if (!f.visible) continue;
     const w = f.widthMm ?? 0;
     const h = f.heightMm ?? 0;
-    if (f.x < 0 || f.y < 0 || f.x + w > t.widthMm + 0.01 || f.y + h > t.heightMm + 0.01) {
-      issues.push({ level: "error", message: `Campo "${f.key}" sai da etiqueta.` });
+    if (f.x < 0 || f.y < 0 || f.x + w > t.widthMm + 0.1 || f.y + h > t.heightMm + 0.1) {
+      issues.push({ 
+        level: "warning", 
+        message: `Campo "${f.key}" pode sair fora da etiqueta (${Math.round(f.x + w)}mm).` 
+      });
       continue;
     }
     const outOfSafe =

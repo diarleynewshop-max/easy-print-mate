@@ -2,9 +2,12 @@
 
 Este arquivo registra as decisões arquiteturais e o progresso das correções feitas na impressora Elgin L42 Pro Full.
 
-## Estado Atual: Versão 1.7.6
+## Estado Atual: Versão 1.7.7
 
-### 1. Novo Módulo A4 / Cartazes (v1.7.0 - v1.7.5)
+### 1. Flexibilidade de Validação (v1.7.7)
+- **Relaxed Validation:** Downgrade de erros de "campo fora da área" para avisos. Agora o botão de imprimir permanece habilitado mesmo se o software detectar campos fora dos limites nominais, permitindo que o usuário decida se deseja prosseguir com a impressão.
+
+### 2. Novo Módulo A4 / Cartazes (v1.7.0 - v1.7.5)
 - **Grades Flexíveis:** Suporte total a etiquetas em folha (Pimaco) com configuração de linhas, colunas, gaps e margens.
 - **Impressão em Lote:** Fila de impressão para bipar vários produtos e gerar PDFs multi-páginas automaticamente.
 - **Fotos do ERP:** Possibilidade de incluir a foto cadastrada no Varejo Fácil diretamente nos cartazes A4.
