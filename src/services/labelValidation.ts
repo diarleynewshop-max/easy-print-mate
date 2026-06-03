@@ -31,34 +31,16 @@ export function validateTemplate(t: LabelTemplate): ValidationIssue[] {
     issues.push({ level: "error", message: "O espaço entre colunas ficou negativo." });
   }
 
-  const safeL = t.safePaddingLeftMm ?? 0;
-  const safeR = t.safePaddingRightMm ?? 0;
-  const safeT = t.safePaddingTopMm ?? 0;
-  const safeB = t.safePaddingBottomMm ?? 0;
-
   for (const f of t.fields) {
     if (!f.visible) continue;
     const w = f.widthMm ?? 0;
     const h = f.heightMm ?? 0;
-    if (f.x < 0 || f.y < 0 || f.x + w > t.widthMm + 0.1 || f.y + h > t.heightMm + 0.1) {
+    
+    // Apenas avisa se realmente sair do tamanho físico da etiqueta
+    if (f.x < -0.1 || f.y < -0.1 || f.x + w > t.widthMm + 0.1 || f.y + h > t.heightMm + 0.1) {
       issues.push({ 
         level: "warning", 
-        message: `Campo "${f.key}" pode sair fora da etiqueta (${Math.round(f.x + w)}mm).` 
-      });
-      continue;
-    }
-    const outOfSafe =
-      f.x < safeL - 0.01 ||
-      f.y < safeT - 0.01 ||
-      f.x + w > t.widthMm - safeR + 0.01 ||
-      f.y + h > t.heightMm - safeB + 0.01;
-    if (outOfSafe) {
-      issues.push({
-        level: "warning",
-        message:
-          f.key === "barcode"
-            ? "Código de barras pode sair cortado."
-            : `Campo "${f.key}" pode sair cortado na impressão.`,
+        message: `Campo "${f.key}" está muito próximo ou fora da borda.` 
       });
     }
   }
