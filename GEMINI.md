@@ -2,9 +2,12 @@
 
 Este arquivo registra as decisões arquiteturais e o progresso das correções feitas na impressora Elgin L42 Pro Full.
 
-## Estado Atual: Versão 1.7.7
+## Estado Atual: Versão 1.7.8
 
-### 1. Flexibilidade de Validação (v1.7.7)
+### 1. Zoom Dinâmico (v1.7.8)
+- **A4 Preview & Editor Zoom:** Implementado sistema de zoom (40% a 300%) para o módulo A4. Agora é possível ampliar a visualização da folha e o editor para ajustes milimétricos em etiquetas densas (ex: Pimaco 60).
+
+### 2. Flexibilidade de Validação (v1.7.7)
 - **Relaxed Validation:** Downgrade de erros de "campo fora da área" para avisos. Agora o botão de imprimir permanece habilitado mesmo se o software detectar campos fora dos limites nominais, permitindo que o usuário decida se deseja prosseguir com a impressão.
 
 ### 2. Novo Módulo A4 / Cartazes (v1.7.0 - v1.7.5)
