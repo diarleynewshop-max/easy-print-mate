@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import JsBarcode from "jsbarcode";
 import { LabelField, LabelFieldKey, LabelTemplate, Product } from "@/types/label";
+import { cn } from "@/lib/utils";
 
 const MM_TO_PX = 3.78;
 
