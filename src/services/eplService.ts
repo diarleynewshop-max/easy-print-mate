@@ -189,8 +189,7 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
   const marginRightMm = template.marginRightMm ?? 0;
   const marginBottomMm = template.marginBottomMm ?? 0;
   const pageWidthMm = template.paperWidthMm || (columns * template.widthMm + (columns - 1) * columnGapMm + marginLeftMm + marginRightMm);
-  const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
-  const pageWidthDots = mmToDots(pageWidthMm, template);
+  const pageHeightMm = template.heightMm;
   const pageHeightDots = mmToDots(pageHeightMm, template);
   const gapDots = mmToDots(rowGapMm, template);
   const labelsInRow = Math.min(columns, Math.max(1, copies));
@@ -202,7 +201,7 @@ export function buildEplPrn(template: LabelTemplate, product: Product, copies: n
   // as coordenadas X serão deslocadas. Usamos o pageWidthDots exato do papel.
   const qLimit = pageWidthDots;
 
-  const lines = ["I8,1,001", `q${qLimit}`, "OD", "JF", "WN", rotationCmd, `Q${pageHeightDots},${gapDots}`, "N"];
+  const lines = ["I8,1,001", `q${qLimit}`, "OD", rotationCmd, `Q${pageHeightDots},${gapDots}`, "N"];
   const columnIndices = getColumnIndices(template, labelsInRow);
   columnIndices.forEach((actualColumn) => {
     const offsetX = marginLeftMm + actualColumn * (template.widthMm + columnGapMm);
@@ -221,7 +220,7 @@ function eplHeader(template: LabelTemplate) {
   const marginRightMm = template.marginRightMm ?? 0;
   const marginBottomMm = template.marginBottomMm ?? 0;
   const pageWidthMm = template.paperWidthMm || (columns * template.widthMm + (columns - 1) * columnGapMm + marginLeftMm + marginRightMm);
-  const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
+  const pageHeightMm = template.heightMm;
   const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
   const pageWidthDots = mmToDots(pageWidthMm, template);
   const qLimit = pageWidthDots;
@@ -231,7 +230,7 @@ function eplHeader(template: LabelTemplate) {
     columnGapMm,
     marginLeftMm,
     marginTopMm,
-    pageLines: ["I8,1,001", `q${qLimit}`, "OD", "JF", "WN", rotationCmd, `Q${mmToDots(pageHeightMm, template)},${mmToDots(rowGapMm, template)}`, "N"],
+    pageLines: ["I8,1,001", `q${qLimit}`, "OD", rotationCmd, `Q${mmToDots(pageHeightMm, template)},${mmToDots(rowGapMm, template)}`, "N"],
   };
 }
 

@@ -2,9 +2,14 @@
 
 Este arquivo registra as decisões arquiteturais e o progresso das correções feitas na impressora Elgin L42 Pro Full.
 
-## Estado Atual: Versão 1.4.0
+## Estado Atual: Versão 1.6.1
 
-### 1. Correções de Impressão (EPL2)
+### 1. Correções de Estabilidade e Alinhamento (v1.6.1)
+- **Fix Label Drift:** Corrigido erro de cálculo no comando `Q` (EPL2) que somava margens à altura física da etiqueta, causando deslocamento progressivo.
+- **Printing Stability:** Removidos comandos `JF` (Top of Form Backup) e `WN` que causavam comportamento errático (movimento de vai-e-vem) em impressoras Elgin.
+- **Preset Update:** Atualizado preset Elgin L42PRO para usar pitch de 15mm (13.5mm etiqueta + 1.5mm gap) como padrão estável.
+
+### 2. Correções de Impressão (EPL2) - v1.4.0
 - **Suporte DPI:** O app agora suporta 203 DPI (8 dots/mm) e 300 DPI (11.81 dots/mm), configuráveis no Editor.
 - **Centralização:** Implementada lógica manual de centralização (`getAdjustedX`). O comando `A` do EPL2 é ajustado com base na largura estimada das fontes internas (Fontes 1-5).
 - **Rotação 180°:** Migrado de rotação manual por elemento para o comando nativo `ZB` (Print from Bottom), garantindo alinhamento perfeito sem espelhamento.
