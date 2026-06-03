@@ -181,34 +181,24 @@ function appendProductFields(lines: string[], template: LabelTemplate, product: 
 }
 
 export function buildEplPrn(template: LabelTemplate, product: Product, copies: number) {
-  const columns = Math.max(1, template.columns || 1);
-  const columnGapMm = template.columnGapMm ?? 0;
-  const rowGapMm = template.rowGapMm ?? 0;
-  const marginLeftMm = template.marginLeftMm ?? 0;
-  const marginTopMm = template.marginTopMm ?? 0;
-  const marginRightMm = template.marginRightMm ?? 0;
-  const marginBottomMm = template.marginBottomMm ?? 0;
-  const pageWidthMm = template.paperWidthMm || (columns * template.widthMm + (columns - 1) * columnGapMm + marginLeftMm + marginRightMm);
-  const pageHeightMm = template.heightMm;
-  const pageHeightDots = mmToDots(pageHeightMm, template);
-  const gapDots = mmToDots(rowGapMm, template);
-  const labelsInRow = Math.min(columns, Math.max(1, copies));
-  const rowCopies = Math.max(1, Math.ceil(copies / columns));
-  const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
-
-  // O comando 'q' define a largura da área imprimível. 
-  // Em impressoras Elgin/EPL2 centralizadas, se o 'q' for muito maior que o papel físico,
-  // as coordenadas X serão deslocadas. Usamos o pageWidthDots exato do papel.
-  const qLimit = pageWidthDots;
-
-  const lines = ["I8,1,001", `q${qLimit}`, "OD", rotationCmd, `Q${pageHeightDots},${gapDots}`, "N"];
-  const columnIndices = getColumnIndices(template, labelsInRow);
-  columnIndices.forEach((actualColumn) => {
-    const offsetX = marginLeftMm + actualColumn * (template.widthMm + columnGapMm);
-    appendProductFields(lines, template, product, offsetX);
-  });
-  lines.push(`P${rowCopies}`);
-  return `${lines.join("\r\n")}\r\n`;
+  const { columns, columnGapMm, marginLeftMm, pageLines } = eplHeader(template);
+  const jobs: string[] = [];
+  
+  for (let printed = 0; printed < copies; printed += columns) {
+    const lines = [...pageLines];
+    const labelsInThisRow = Math.min(columns, copies - printed);
+    const columnIndices = getColumnIndices(template, labelsInThisRow);
+    
+    columnIndices.forEach((actualColumn) => {
+      const offsetX = marginLeftMm + actualColumn * (template.widthMm + columnGapMm);
+      appendProductFields(lines, template, product, offsetX);
+    });
+    
+    lines.push("P1");
+    jobs.push(lines.join("\r\n"));
+  }
+  
+  return `${jobs.join("\r\n")}\r\n`;
 }
 
 function eplHeader(template: LabelTemplate) {

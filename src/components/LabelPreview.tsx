@@ -266,22 +266,78 @@ function SingleLabel({
   ];
 
   return (
-    <div
-      ref={canvasRef}
-      className="label-canvas"
-      style={{
-        width: measure(template.widthMm),
-        height: measure(template.heightMm),
-        fontFamily: template.fontFamily,
-        border: forPrint ? "none" : "1px dashed #999",
-        backgroundColor: "#fff",
-        backgroundImage: editable
-          ? "linear-gradient(rgba(37,99,235,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(37,99,235,.08) 1px, transparent 1px)"
-          : undefined,
-        backgroundSize: editable ? `${MM_TO_PX * 2}px ${MM_TO_PX * 2}px` : undefined,
-        boxShadow: editable ? "0 18px 50px rgba(15, 23, 42, .16)" : undefined,
-      }}
-    >
+    <div className={cn("relative", editable && "p-8 bg-muted/20 rounded-xl border border-dashed border-primary/20")}>
+      {editable && (
+        <>
+          {/* Horizontal Ruler */}
+          <div 
+            className="absolute left-8 top-0 flex border-b border-primary/20 bg-background/50 overflow-hidden"
+            style={{ width: measure(template.widthMm), height: 24 }}
+          >
+            {Array.from({ length: Math.ceil(template.widthMm) + 1 }).map((_, i) => (
+              <div 
+                key={i} 
+                className="absolute bottom-0 border-l border-primary/30" 
+                style={{ 
+                  left: measure(i), 
+                  height: i % 10 === 0 ? 12 : i % 5 === 0 ? 8 : 4,
+                  borderColor: i % 5 === 0 ? "rgba(37,99,235,0.5)" : "rgba(37,99,235,0.2)"
+                }}
+              >
+                {i % 10 === 0 && (
+                  <span className="absolute -left-1 -top-4 text-[9px] font-mono font-bold text-primary/60">{i}</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Vertical Ruler */}
+          <div 
+            className="absolute left-0 top-8 flex flex-col border-r border-primary/20 bg-background/50 overflow-hidden"
+            style={{ width: 24, height: measure(template.heightMm) }}
+          >
+            {Array.from({ length: Math.ceil(template.heightMm) + 1 }).map((_, i) => (
+              <div 
+                key={i} 
+                className="absolute right-0 border-t border-primary/30" 
+                style={{ 
+                  top: measure(i), 
+                  width: i % 10 === 0 ? 12 : i % 5 === 0 ? 8 : 4,
+                  borderColor: i % 5 === 0 ? "rgba(37,99,235,0.5)" : "rgba(37,99,235,0.2)"
+                }}
+              >
+                {i % 10 === 0 && (
+                  <span className="absolute -top-2 -left-4 w-4 text-right text-[9px] font-mono font-bold text-primary/60">{i}</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Origin Indicator (0,0) */}
+          <div className="absolute left-4 top-4 h-4 w-4 flex items-center justify-center">
+            <div className="h-px w-full bg-primary/20 absolute" />
+            <div className="w-px h-full bg-primary/20 absolute" />
+            <span className="text-[8px] font-bold text-primary/40 relative z-10 bg-background px-0.5">MM</span>
+          </div>
+        </>
+      )}
+
+      <div
+        ref={canvasRef}
+        className="label-canvas relative z-10"
+        style={{
+          width: measure(template.widthMm),
+          height: measure(template.heightMm),
+          fontFamily: template.fontFamily,
+          border: forPrint ? "none" : "1px solid #2563eb33",
+          backgroundColor: "#fff",
+          backgroundImage: editable
+            ? "linear-gradient(rgba(37,99,235,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(37,99,235,.08) 1px, transparent 1px)"
+            : undefined,
+          backgroundSize: editable ? `${MM_TO_PX * 2}px ${MM_TO_PX * 2}px` : undefined,
+          boxShadow: editable ? "0 25px 50px -12px rgba(0, 0, 0, 0.25)" : undefined,
+        }}
+      >
       <div
         style={{
           position: "relative",
