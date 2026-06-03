@@ -1,7 +1,11 @@
 import jsPDF from "jspdf";
 import JsBarcode from "jsbarcode";
-import { A4Element, A4Template, A4DynamicKey } from "@/types/a4";
+import { A4Element, A4Template, A4DynamicKey, A4FontFamily } from "@/types/a4";
 import { Product } from "@/types/label";
+
+// Import das fontes Base64 (Seria ideal carregar de arquivos, mas para manter tudo no bundle usamos consts)
+// Nota: Em um app real, colocaríamos as strings base64 aqui ou em um arquivo fonts.ts
+import { FONTS_VFS } from "./fonts";
 
 export const A4_WIDTH_MM = 210;
 export const A4_HEIGHT_MM = 297;
@@ -55,6 +59,7 @@ export function getDynamicValue(key: A4DynamicKey | undefined, p: Product | null
       secao: "Seção",
       grupo: "Grupo",
       estoque: "10",
+      imageUrl: "",
     };
     return samples[key];
   }
@@ -75,6 +80,8 @@ export function getDynamicValue(key: A4DynamicKey | undefined, p: Product | null
       return p.grupo || "";
     case "estoque":
       return p.estoque?.toString() ?? "";
+    case "imageUrl":
+      return p.imageUrl || "";
   }
 }
 
@@ -103,7 +110,33 @@ function pickBarcodeFormat(value: string, requested?: A4Element["barcodeFormat"]
 function applyFont(doc: jsPDF, el: A4Element, scale = 1) {
   const family = el.fontFamily || "helvetica";
   const style = el.bold && el.italic ? "bolditalic" : el.bold ? "bold" : el.italic ? "italic" : "normal";
-  doc.setFont(family, style);
+  
+  // Adiciona fontes ao VFS se não estiverem presentes
+  Object.entries(FONTS_VFS).forEach(([filename, base64]) => {
+    if (!doc.existsFileInVFS(filename)) {
+      doc.addFileToVFS(filename, base64);
+    }
+  });
+
+  // Mapeamento de fontes customizadas
+  if (family === "Anton") {
+    doc.addFont("Anton-Regular.ttf", "Anton", "normal");
+    doc.setFont("Anton", "normal");
+  } else if (family === "Roboto") {
+    doc.addFont("Roboto-Bold.ttf", "Roboto", "bold");
+    doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
+    doc.setFont("Roboto", style.includes("bold") ? "bold" : "normal");
+  } else if (family === "OpenSans") {
+    doc.addFont("OpenSans-Bold.ttf", "OpenSans", "bold");
+    doc.addFont("OpenSans-Regular.ttf", "OpenSans", "normal");
+    doc.setFont("OpenSans", style.includes("bold") ? "bold" : "normal");
+  } else if (family === "BebasNeue") {
+    doc.addFont("BebasNeue-Regular.ttf", "BebasNeue", "normal");
+    doc.setFont("BebasNeue", "normal");
+  } else {
+    doc.setFont(family, style);
+  }
+
   doc.setFontSize(el.fontSize * scale);
   if (el.color) {
     const hex = el.color.replace("#", "");
@@ -166,6 +199,22 @@ function drawElement(doc: jsPDF, el: A4Element, originX: number, originY: number
     return;
   }
 
+  // Foto do produto vinda do ERP (Dynamic field "imageUrl")
+  if (el.type === "dynamic" && el.field === "imageUrl") {
+    const url = product?.imageUrl || "";
+    if (url) {
+       // O jsPDF no front-end tem dificuldades com imagens externas (CORS)
+       // Idealmente o bridge no Electron já deveria trazer o base64
+       // Vamos assumir que se estiver no Electron, o URL é local ou tratável
+       try {
+         doc.addImage(url, "JPEG", ax, ay, width, height);
+       } catch (e) {
+         console.warn("Erro ao carregar imagem ERP no PDF", e);
+       }
+    }
+    return;
+  }
+
   if (el.type === "image" && el.imageDataUrl) {
     const format = el.imageDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
     doc.addImage(el.imageDataUrl, format, ax, ay, width, height);
@@ -206,9 +255,6 @@ function drawElement(doc: jsPDF, el: A4Element, originX: number, originY: number
 }
 
 export function getA4RenderMetrics(template: A4Template, targetRect: BlockRect) {
-  // Para compatibilidade, tentamos inferir o sourceRect original se sourceBlocks existir
-  // Mas no novo sistema, o layout é editado no bloco 1 diretamente com suas dimensões reais.
-  // Portanto, a escala padrão deve ser 1, a menos que haja necessidade de redimensionamento explícito.
   return {
     scale: 1,
     x: targetRect.x + template.paddingMm,

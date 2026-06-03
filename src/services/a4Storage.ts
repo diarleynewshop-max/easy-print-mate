@@ -10,8 +10,40 @@ function uid() {
 export function defaultA4Templates(): A4Template[] {
   return [
     {
+      id: "a4-default-cartaz",
+      name: "Cartaz A4 — Oferta com Foto",
+      rows: 1,
+      cols: 1,
+      marginTop: 0,
+      marginBottom: 0,
+      marginLeft: 0,
+      marginRight: 0,
+      rowGap: 0,
+      colGap: 0,
+      blocks: 1,
+      paddingMm: 5,
+      showBorder: false,
+      elements: [
+        // Fundo/Shape Vermelho no Topo
+        { id: uid(), type: "shape", shapeKind: "rect", x: 0, y: 0, widthMm: 210, heightMm: 45, fillColor: "#e60000", strokeWidthMm: 0 },
+        { id: uid(), type: "text", text: "OFERTA", x: 10, y: 10, widthMm: 190, heightMm: 25, fontSize: 80, bold: true, align: "center", color: "#ffffff", fontFamily: "Anton" },
+        
+        // Foto do Produto do ERP
+        { id: uid(), type: "dynamic", field: "imageUrl", x: 25, y: 55, widthMm: 160, heightMm: 120, align: "center" },
+        
+        // Descrição
+        { id: uid(), type: "dynamic", field: "descricao", x: 10, y: 185, widthMm: 190, heightMm: 20, fontSize: 32, bold: true, align: "center", fontFamily: "Roboto" },
+        
+        // Preço
+        { id: uid(), type: "dynamic", field: "precoVarejo", prefix: "R$ ", x: 10, y: 215, widthMm: 190, heightMm: 50, fontSize: 110, bold: true, align: "center", color: "#e60000", fontFamily: "Anton" },
+        
+        // EAN pequeno no rodapé
+        { id: uid(), type: "dynamic", field: "ean", prefix: "EAN: ", x: 10, y: 280, widthMm: 190, heightMm: 8, fontSize: 10, align: "center", color: "#666666" },
+      ],
+    },
+    {
       id: "a4-default-1",
-      name: "A4 — 1 por folha (cartaz)",
+      name: "A4 — 1 por folha (Simples)",
       rows: 1,
       cols: 1,
       marginTop: 0,
@@ -24,54 +56,12 @@ export function defaultA4Templates(): A4Template[] {
       paddingMm: 15,
       showBorder: false,
       elements: [
-        { id: uid(), type: "dynamic", field: "descricao", x: 10, y: 20, widthMm: 180, heightMm: 30, fontSize: 36, bold: true, align: "center" },
-        { id: uid(), type: "text", text: "OFERTA", x: 10, y: 60, widthMm: 180, heightMm: 15, fontSize: 22, bold: true, align: "center", color: "#c0392b" },
-        { id: uid(), type: "dynamic", field: "precoVarejo", prefix: "R$ ", x: 10, y: 90, widthMm: 180, heightMm: 60, fontSize: 100, bold: true, align: "center", color: "#c0392b" },
+        { id: uid(), type: "dynamic", field: "descricao", x: 10, y: 20, widthMm: 180, heightMm: 30, fontSize: 36, bold: true, align: "center", fontFamily: "Roboto" },
+        { id: uid(), type: "text", text: "OFERTA", x: 10, y: 60, widthMm: 180, heightMm: 15, fontSize: 22, bold: true, align: "center", color: "#c0392b", fontFamily: "Anton" },
+        { id: uid(), type: "dynamic", field: "precoVarejo", prefix: "R$ ", x: 10, y: 90, widthMm: 180, heightMm: 60, fontSize: 100, bold: true, align: "center", color: "#c0392b", fontFamily: "Anton" },
         { id: uid(), type: "dynamic", field: "precoAtacado", prefix: "Atacado: R$ ", x: 10, y: 170, widthMm: 180, heightMm: 15, fontSize: 18, align: "center" },
         { id: uid(), type: "barcode", field: undefined, x: 60, y: 200, widthMm: 90, heightMm: 30, fontSize: 10, barcodeFormat: "auto", barcodeDisplayValue: true },
         { id: uid(), type: "dynamic", field: "ean", prefix: "EAN: ", x: 10, y: 245, widthMm: 180, heightMm: 10, fontSize: 11, align: "center" },
-      ],
-    },
-    {
-      id: "a4-default-2",
-      name: "A4 — 2 por folha",
-      rows: 2,
-      cols: 1,
-      marginTop: 0,
-      marginBottom: 0,
-      marginLeft: 0,
-      marginRight: 0,
-      rowGap: 0,
-      colGap: 0,
-      blocks: 2,
-      paddingMm: 10,
-      showBorder: true,
-      elements: [
-        { id: uid(), type: "dynamic", field: "descricao", x: 5, y: 10, widthMm: 180, heightMm: 18, fontSize: 22, bold: true, align: "center" },
-        { id: uid(), type: "dynamic", field: "precoVarejo", prefix: "R$ ", x: 5, y: 40, widthMm: 180, heightMm: 35, fontSize: 60, bold: true, align: "center", color: "#c0392b" },
-        { id: uid(), type: "barcode", x: 60, y: 90, widthMm: 80, heightMm: 25, fontSize: 9, barcodeFormat: "auto", barcodeDisplayValue: true },
-        { id: uid(), type: "dynamic", field: "ean", x: 5, y: 122, widthMm: 180, heightMm: 8, fontSize: 10, align: "center" },
-      ],
-    },
-    {
-      id: "a4-default-4",
-      name: "A4 — 4 por folha",
-      rows: 2,
-      cols: 2,
-      marginTop: 0,
-      marginBottom: 0,
-      marginLeft: 0,
-      marginRight: 0,
-      rowGap: 0,
-      colGap: 0,
-      blocks: 4,
-      paddingMm: 8,
-      showBorder: true,
-      elements: [
-        { id: uid(), type: "dynamic", field: "descricao", x: 4, y: 6, widthMm: 90, heightMm: 14, fontSize: 14, bold: true, align: "center" },
-        { id: uid(), type: "dynamic", field: "precoVarejo", prefix: "R$ ", x: 4, y: 30, widthMm: 90, heightMm: 30, fontSize: 36, bold: true, align: "center", color: "#c0392b" },
-        { id: uid(), type: "barcode", x: 18, y: 70, widthMm: 60, heightMm: 22, fontSize: 8, barcodeFormat: "auto", barcodeDisplayValue: true },
-        { id: uid(), type: "dynamic", field: "ean", x: 4, y: 100, widthMm: 90, heightMm: 8, fontSize: 9, align: "center" },
       ],
     },
     {

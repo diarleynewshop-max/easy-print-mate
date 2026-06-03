@@ -418,10 +418,10 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
                               }
                         }
                       />
-                    ) : el.type === "image" ? (
-                      el.imageDataUrl ? (
+                    ) : el.type === "image" || (el.type === "dynamic" && el.field === "imageUrl") ? (
+                      (el.type === "image" ? el.imageDataUrl : product?.imageUrl) ? (
                         <img
-                          src={el.imageDataUrl}
+                          src={el.type === "image" ? el.imageDataUrl : product?.imageUrl}
                           alt={el.imageName || "arte"}
                           className="h-full w-full"
                           style={{
@@ -429,7 +429,11 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
                               el.imageFit === "contain" ? "contain" : el.imageFit === "cover" ? "cover" : "fill",
                           }}
                         />
-                      ) : null
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-muted/20 text-[8px] text-muted-foreground">
+                          {el.field === "imageUrl" ? "Foto ERP" : "Sem Imagem"}
+                        </div>
+                      )
                     ) : el.type === "barcode" ? (
                       <div className="flex h-full w-full items-center justify-center bg-muted/40 text-[7px] leading-tight font-mono text-center">
                         ▮▮▮▮<br />{product?.ean || "EAN"}

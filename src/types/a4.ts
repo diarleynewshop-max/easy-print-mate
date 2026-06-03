@@ -10,10 +10,21 @@ export type A4DynamicKey =
   | "precoAtacado"
   | "secao"
   | "grupo"
-  | "estoque";
+  | "estoque"
+  | "imageUrl"; // Novo campo para imagem do produto
 
 export type A4ElementType = "text" | "dynamic" | "barcode" | "image" | "shape";
 export type A4ShapeKind = "rect" | "roundRect" | "circle" | "line";
+
+// Lista de fontes suportadas (nativas do jsPDF + customizadas base64)
+export type A4FontFamily = 
+  | "helvetica" 
+  | "times" 
+  | "courier" 
+  | "Anton" 
+  | "Roboto" 
+  | "OpenSans"
+  | "BebasNeue";
 
 export interface A4Element {
   id: string;
@@ -30,7 +41,7 @@ export interface A4Element {
   field?: A4DynamicKey;
   // tipografia
   fontSize: number; // pt
-  fontFamily?: "helvetica" | "times" | "courier";
+  fontFamily?: A4FontFamily;
   bold?: boolean;
   italic?: boolean;
   align?: "left" | "center" | "right";

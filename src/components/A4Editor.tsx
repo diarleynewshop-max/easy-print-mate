@@ -39,6 +39,7 @@ const DYNAMIC_LABELS: Record<A4DynamicKey, string> = {
   secao: "Secao",
   grupo: "Grupo",
   estoque: "Estoque",
+  imageUrl: "Foto do Produto (ERP)",
 };
 
 function uid() {
@@ -262,6 +263,7 @@ export function A4Editor({ template, product, onChange }: Props) {
             <PaletteButton icon={<Database />} label="Descricao" onClick={() => addDynamicElement("descricao")} />
             <PaletteButton icon={<Database />} label="Preco" onClick={() => addDynamicElement("precoVarejo", "R$ ")} />
             <PaletteButton icon={<Database />} label="EAN" onClick={() => addDynamicElement("ean")} />
+            <PaletteButton icon={<ImageIcon className="text-primary" />} label="Foto ERP" onClick={() => addDynamicElement("imageUrl")} />
             <PaletteButton icon={<BarcodeIcon />} label="Barras" onClick={() => addElement("barcode")} />
           </div>
         </Panel>
@@ -604,12 +606,16 @@ function ElementProps({
             <NumField label="Fonte (pt)" value={element.fontSize} onChange={(fontSize) => onChange({ fontSize })} />
             <div>
               <Label className="text-xs">Familia</Label>
-              <Select value={element.fontFamily || "helvetica"} onValueChange={(v) => onChange({ fontFamily: v as A4Element["fontFamily"] })}>
+              <Select value={element.fontFamily || "helvetica"} onValueChange={(v) => onChange({ fontFamily: v as any })}>
                 <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="helvetica">Helvetica</SelectItem>
                   <SelectItem value="times">Times</SelectItem>
                   <SelectItem value="courier">Courier</SelectItem>
+                  <SelectItem value="Anton">Anton (Poster)</SelectItem>
+                  <SelectItem value="Roboto">Roboto</SelectItem>
+                  <SelectItem value="OpenSans">Open Sans</SelectItem>
+                  <SelectItem value="BebasNeue">Bebas Neue</SelectItem>
                 </SelectContent>
               </Select>
             </div>
