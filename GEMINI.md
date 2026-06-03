@@ -2,9 +2,19 @@
 
 Este arquivo registra as decisões arquiteturais e o progresso das correções feitas na impressora Elgin L42 Pro Full.
 
-## Estado Atual: Versão 1.6.1
+## Estado Atual: Versão 1.7.6
 
-### 1. Correções de Estabilidade e Alinhamento (v1.6.1)
+### 1. Novo Módulo A4 / Cartazes (v1.7.0 - v1.7.5)
+- **Grades Flexíveis:** Suporte total a etiquetas em folha (Pimaco) com configuração de linhas, colunas, gaps e margens.
+- **Impressão em Lote:** Fila de impressão para bipar vários produtos e gerar PDFs multi-páginas automaticamente.
+- **Fotos do ERP:** Possibilidade de incluir a foto cadastrada no Varejo Fácil diretamente nos cartazes A4.
+- **Fontes Premium:** Adicionadas fontes Anton (Poster), Roboto, Open Sans e Bebas Neue para layouts de oferta profissionais.
+
+### 2. Estabilidade e Usabilidade (v1.7.6)
+- **Fix Direct Print:** Refatorada a impressão direta para usar processamento linha a linha (mais estável em Elgin antigas).
+- **Régua de Precisão:** Adicionada régua em MM no Editor de Etiquetas para alinhamento técnico perfeito.
+
+### 3. Correções de Estabilidade e Alinhamento (v1.6.1)
 - **Fix Label Drift:** Corrigido erro de cálculo no comando `Q` (EPL2) que somava margens à altura física da etiqueta, causando deslocamento progressivo.
 - **Printing Stability:** Removidos comandos `JF` (Top of Form Backup) e `WN` que causavam comportamento errático (movimento de vai-e-vem) em impressoras Elgin.
 - **Preset Update:** Atualizado preset Elgin L42PRO para usar pitch de 15mm (13.5mm etiqueta + 1.5mm gap) como padrão estável.

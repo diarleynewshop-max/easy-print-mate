@@ -462,6 +462,7 @@ function SingleLabel({
               </div>
             );
           })}
+        </div>
       </div>
     </div>
   );
