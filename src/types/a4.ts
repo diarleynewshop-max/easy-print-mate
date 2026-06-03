@@ -1,6 +1,6 @@
 import { Product } from "./label";
 
-export type A4BlockCount = 1 | 2 | 4;
+export type A4BlockCount = number;
 
 export type A4DynamicKey =
   | "descricao"
@@ -53,9 +53,21 @@ export interface A4Element {
 export interface A4Template {
   id: string;
   name: string;
-  blocks: A4BlockCount;
+  // Layout da grade
+  rows: number;
+  cols: number;
+  // Margens da folha (mm)
+  marginTop: number;
+  marginBottom: number;
+  marginLeft: number;
+  marginRight: number;
+  // Espaçamento entre blocos (mm)
+  rowGap: number;
+  colGap: number;
+
+  blocks: A4BlockCount; // total = rows * cols (mantido para compatibilidade legado)
   sourceBlocks?: A4BlockCount;
-  // padding interno do bloco (mm)
+  // padding interno de cada bloco (mm)
   paddingMm: number;
   // borda em volta do bloco
   showBorder?: boolean;

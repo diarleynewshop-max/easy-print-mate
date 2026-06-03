@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import JsBarcode from "jsbarcode";
-import { A4BlockCount, A4Element, A4Template, A4DynamicKey } from "@/types/a4";
+import { A4Element, A4Template, A4DynamicKey } from "@/types/a4";
 import { Product } from "@/types/label";
 
 export const A4_WIDTH_MM = 210;
@@ -13,23 +13,29 @@ export interface BlockRect {
   height: number;
 }
 
-export function getBlockRects(blocks: A4BlockCount): BlockRect[] {
-  switch (blocks) {
-    case 1:
-      return [{ x: 0, y: 0, width: A4_WIDTH_MM, height: A4_HEIGHT_MM }];
-    case 2:
-      return [
-        { x: 0, y: 0, width: A4_WIDTH_MM, height: A4_HEIGHT_MM / 2 },
-        { x: 0, y: A4_HEIGHT_MM / 2, width: A4_WIDTH_MM, height: A4_HEIGHT_MM / 2 },
-      ];
-    case 4:
-      return [
-        { x: 0, y: 0, width: A4_WIDTH_MM / 2, height: A4_HEIGHT_MM / 2 },
-        { x: A4_WIDTH_MM / 2, y: 0, width: A4_WIDTH_MM / 2, height: A4_HEIGHT_MM / 2 },
-        { x: 0, y: A4_HEIGHT_MM / 2, width: A4_WIDTH_MM / 2, height: A4_HEIGHT_MM / 2 },
-        { x: A4_WIDTH_MM / 2, y: A4_HEIGHT_MM / 2, width: A4_WIDTH_MM / 2, height: A4_HEIGHT_MM / 2 },
-      ];
+export function getBlockRects(template: A4Template): BlockRect[] {
+  const { rows, cols, marginTop, marginBottom, marginLeft, marginRight, rowGap, colGap } = template;
+  
+  const availableWidth = A4_WIDTH_MM - marginLeft - marginRight;
+  const availableHeight = A4_HEIGHT_MM - marginTop - marginBottom;
+  
+  const blockWidth = (availableWidth - (cols - 1) * colGap) / cols;
+  const blockHeight = (availableHeight - (rows - 1) * rowGap) / rows;
+  
+  const rects: BlockRect[] = [];
+  
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      rects.push({
+        x: marginLeft + c * (blockWidth + colGap),
+        y: marginTop + r * (blockHeight + rowGap),
+        width: blockWidth,
+        height: blockHeight
+      });
+    }
   }
+  
+  return rects;
 }
 
 function formatBRL(v?: number) {
@@ -200,17 +206,13 @@ function drawElement(doc: jsPDF, el: A4Element, originX: number, originY: number
 }
 
 export function getA4RenderMetrics(template: A4Template, targetRect: BlockRect) {
-  const sourceRect = getBlockRects(template.sourceBlocks || template.blocks)[0];
-  const sourceInnerWidth = Math.max(1, sourceRect.width - template.paddingMm * 2);
-  const sourceInnerHeight = Math.max(1, sourceRect.height - template.paddingMm * 2);
-  const targetInnerWidth = Math.max(1, targetRect.width - template.paddingMm * 2);
-  const targetInnerHeight = Math.max(1, targetRect.height - template.paddingMm * 2);
-  const scale = Math.min(targetInnerWidth / sourceInnerWidth, targetInnerHeight / sourceInnerHeight);
-
+  // Para compatibilidade, tentamos inferir o sourceRect original se sourceBlocks existir
+  // Mas no novo sistema, o layout é editado no bloco 1 diretamente com suas dimensões reais.
+  // Portanto, a escala padrão deve ser 1, a menos que haja necessidade de redimensionamento explícito.
   return {
-    scale,
-    x: targetRect.x + template.paddingMm + (targetInnerWidth - sourceInnerWidth * scale) / 2,
-    y: targetRect.y + template.paddingMm + (targetInnerHeight - sourceInnerHeight * scale) / 2,
+    scale: 1,
+    x: targetRect.x + template.paddingMm,
+    y: targetRect.y + template.paddingMm,
   };
 }
 
@@ -219,19 +221,30 @@ export function renderA4Pdf(
   blockProducts: (Product | null)[],
 ): jsPDF {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-  const rects = getBlockRects(template.blocks);
+  const rects = getBlockRects(template);
+  const blocksPerPage = template.rows * template.cols;
 
-  rects.forEach((rect, i) => {
+  for (let i = 0; i < blockProducts.length; i++) {
+    const pageIndex = Math.floor(i / blocksPerPage);
+    const blockIndex = i % blocksPerPage;
+    
+    if (pageIndex > 0 && blockIndex === 0) {
+      doc.addPage();
+    }
+    
+    const rect = rects[blockIndex];
     const product = blockProducts[i] || null;
+    
     if (template.showBorder) {
       doc.setDrawColor(180, 180, 180);
       doc.setLineDashPattern([1, 1], 0);
-      doc.rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+      doc.rect(rect.x, rect.y, rect.width, rect.height);
       doc.setLineDashPattern([], 0);
     }
+    
     const render = getA4RenderMetrics(template, rect);
     template.elements.forEach((el) => drawElement(doc, el, render.x, render.y, product, render.scale));
-  });
+  }
 
   return doc;
 }

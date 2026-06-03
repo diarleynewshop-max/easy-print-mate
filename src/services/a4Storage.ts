@@ -12,6 +12,14 @@ export function defaultA4Templates(): A4Template[] {
     {
       id: "a4-default-1",
       name: "A4 — 1 por folha (cartaz)",
+      rows: 1,
+      cols: 1,
+      marginTop: 0,
+      marginBottom: 0,
+      marginLeft: 0,
+      marginRight: 0,
+      rowGap: 0,
+      colGap: 0,
       blocks: 1,
       paddingMm: 15,
       showBorder: false,
@@ -27,6 +35,14 @@ export function defaultA4Templates(): A4Template[] {
     {
       id: "a4-default-2",
       name: "A4 — 2 por folha",
+      rows: 2,
+      cols: 1,
+      marginTop: 0,
+      marginBottom: 0,
+      marginLeft: 0,
+      marginRight: 0,
+      rowGap: 0,
+      colGap: 0,
       blocks: 2,
       paddingMm: 10,
       showBorder: true,
@@ -40,6 +56,14 @@ export function defaultA4Templates(): A4Template[] {
     {
       id: "a4-default-4",
       name: "A4 — 4 por folha",
+      rows: 2,
+      cols: 2,
+      marginTop: 0,
+      marginBottom: 0,
+      marginLeft: 0,
+      marginRight: 0,
+      rowGap: 0,
+      colGap: 0,
       blocks: 4,
       paddingMm: 8,
       showBorder: true,
@@ -50,6 +74,26 @@ export function defaultA4Templates(): A4Template[] {
         { id: uid(), type: "dynamic", field: "ean", x: 4, y: 100, widthMm: 90, heightMm: 8, fontSize: 9, align: "center" },
       ],
     },
+    {
+      id: "a4-default-60",
+      name: "Pimaco 60 etiquetas (A4)",
+      rows: 20,
+      cols: 3,
+      marginTop: 12,
+      marginBottom: 12,
+      marginLeft: 7,
+      marginRight: 7,
+      rowGap: 0,
+      colGap: 3,
+      blocks: 60,
+      paddingMm: 2,
+      showBorder: true,
+      elements: [
+        { id: uid(), type: "dynamic", field: "descricao", x: 1, y: 1, widthMm: 60, heightMm: 4, fontSize: 6, bold: true, align: "left" },
+        { id: uid(), type: "dynamic", field: "precoVarejo", prefix: "R$ ", x: 1, y: 8, widthMm: 60, heightMm: 5, fontSize: 10, bold: true, align: "right", color: "#e60000" },
+        { id: uid(), type: "barcode", x: 10, y: 4, widthMm: 40, heightMm: 5, fontSize: 5, barcodeFormat: "auto", barcodeDisplayValue: true },
+      ],
+    },
   ];
 }
 
@@ -58,12 +102,25 @@ export const a4Storage = {
     try {
       const raw = localStorage.getItem(K_TEMPLATES);
       const parsed = raw ? (JSON.parse(raw) as A4Template[]) : [];
-      if (!parsed.length) {
+      
+      // Migração para novo formato se necessário
+      const migrated = parsed.map(t => {
+        if (t.rows === undefined) {
+          const blocks = t.blocks || 1;
+          if (blocks === 1) return { ...t, rows: 1, cols: 1, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0, rowGap: 0, colGap: 0 };
+          if (blocks === 2) return { ...t, rows: 2, cols: 1, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0, rowGap: 0, colGap: 0 };
+          if (blocks === 4) return { ...t, rows: 2, cols: 2, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0, rowGap: 0, colGap: 0 };
+          return { ...t, rows: 1, cols: blocks, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0, rowGap: 0, colGap: 0 };
+        }
+        return t;
+      });
+
+      if (!migrated.length) {
         const def = defaultA4Templates();
         localStorage.setItem(K_TEMPLATES, JSON.stringify(def));
         return def;
       }
-      return parsed;
+      return migrated;
     } catch {
       return defaultA4Templates();
     }
@@ -79,12 +136,20 @@ export const a4Storage = {
   },
 };
 
-export function newA4Template(blocks: 1 | 2 | 4 = 1): A4Template {
+export function newA4Template(rows = 1, cols = 1): A4Template {
   return {
     id: `a4-${Date.now()}`,
-    name: `Novo modelo A4 (${blocks}/folha)`,
-    blocks,
-    paddingMm: 10,
+    name: `Novo modelo A4 (${rows}x${cols})`,
+    rows,
+    cols,
+    marginTop: 10,
+    marginBottom: 10,
+    marginLeft: 10,
+    marginRight: 10,
+    rowGap: 0,
+    colGap: 0,
+    blocks: rows * cols,
+    paddingMm: 5,
     showBorder: true,
     elements: [],
   };

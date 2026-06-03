@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { A4Template, A4FilledBlock, A4BlockCount } from "@/types/a4";
+import { A4Template, A4FilledBlock } from "@/types/a4";
 import { Product, VFConfig } from "@/types/label";
 import { a4Storage, defaultA4Templates, newA4Template } from "@/services/a4Storage";
 import { downloadA4Pdf, getA4RenderMetrics, getBlockRects, printA4Pdf, A4_WIDTH_MM, A4_HEIGHT_MM, getDynamicValue } from "@/services/a4PdfService";
@@ -36,28 +36,27 @@ export function A4Module({ config }: Props) {
   const [activeId, setActiveId] = useState<string>(() => a4Storage.getActive() || templates[0]?.id || "");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [blocks, setBlocks] = useState<A4FilledBlock[]>([]);
-  const [activeBlock, setActiveBlock] = useState(0);
-  const [repeatMode, setRepeatMode] = useState(true);
-  const [printBlocks, setPrintBlocks] = useState<A4BlockCount>(1);
+  
+  // Fila de produtos para preenchimento sequencial
+  const [productQueue, setProductQueue] = useState<Product[]>([]);
+  const [repeatMode, setRepeatMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const active = templates.find((t) => t.id === activeId) || templates[0];
-  const printTemplate = active ? { ...active, blocks: printBlocks, sourceBlocks: active.blocks } : active;
 
-  // resetar blocos quando trocar template (qtd de blocos pode mudar)
-  useEffect(() => {
-    if (!active) return;
-    setPrintBlocks(active.blocks);
-    setBlocks(Array.from({ length: active.blocks }, () => ({ product: null })));
-    setActiveBlock(0);
-  }, [active, active?.id, active?.blocks]);
+  // Calculamos quantos blocos cabem em uma folha
+  const blocksPerPage = useMemo(() => (active ? active.rows * active.cols : 1), [active]);
 
-  const changePrintBlocks = (count: A4BlockCount) => {
-    setPrintBlocks(count);
-    setBlocks((prev) => Array.from({ length: count }, (_, i) => prev[i] || { product: null }));
-    setActiveBlock((current) => Math.min(current, count - 1));
-  };
+  // Preenchemos os blocos com base na fila e no modo de repetição
+  const blocks = useMemo<A4FilledBlock[]>(() => {
+    if (!active) return [];
+    if (repeatMode && productQueue.length > 0) {
+      return Array.from({ length: blocksPerPage }, () => ({ product: productQueue[0] }));
+    }
+    // No modo sequencial, mostramos exatamente o que está na fila (limitado ao que cabe em telas de preview, mas o PDF gera tudo)
+    // Para o preview, vamos mostrar apenas a primeira página
+    return Array.from({ length: blocksPerPage }, (_, i) => ({ product: productQueue[i] || null }));
+  }, [active, productQueue, repeatMode, blocksPerPage]);
 
   const persist = (next: A4Template[], nextActive?: string) => {
     setTemplates(next);
@@ -73,7 +72,7 @@ export function A4Module({ config }: Props) {
   };
 
   const handleNew = () => {
-    const t = newA4Template(active?.blocks || 1);
+    const t = newA4Template(2, 2);
     persist([...templates, t], t.id);
     setTab("editor");
   };
@@ -95,30 +94,19 @@ export function A4Module({ config }: Props) {
     toast.success("Modelos padrão restaurados");
   };
 
-  const fillBlock = (index: number, product: Product) => {
-    setBlocks((prev) => {
-      const next = [...prev];
-      if (repeatMode) {
-        for (let i = 0; i < next.length; i++) next[i] = { product };
-      } else {
-        next[index] = { product };
-      }
-      return next;
-    });
-    if (!repeatMode) {
-      setActiveBlock(Math.min(index + 1, printBlocks - 1));
-    }
-  };
-
   const search = async () => {
     const ean = code.trim();
     if (!ean) return;
-    if (!active) return;
     setLoading(true);
     try {
       const p = await fetchProductByEan(config, ean);
-      fillBlock(activeBlock, p);
+      if (repeatMode) {
+        setProductQueue([p]);
+      } else {
+        setProductQueue(prev => [...prev, p]);
+      }
       setCode("");
+      toast.success(`${p.descricao.slice(0, 20)}... adicionado`);
     } catch (e) {
       toast.error(e instanceof VFError ? e.message : "Erro ao buscar produto");
     } finally {
@@ -127,40 +115,35 @@ export function A4Module({ config }: Props) {
     }
   };
 
-  const clearBlock = (i: number) => {
-    setBlocks((prev) => {
-      const next = [...prev];
-      next[i] = { product: null };
-      return next;
-    });
+  const clearQueue = () => {
+    setProductQueue([]);
   };
 
-  const clearAll = () => {
-    if (!active) return;
-    setBlocks(Array.from({ length: printBlocks }, () => ({ product: null })));
-    setActiveBlock(0);
+  const removeFromQueue = (index: number) => {
+    setProductQueue(prev => prev.filter((_, i) => i !== index));
   };
-
-  const products = useMemo(() => blocks.map((b) => b.product), [blocks]);
-  const hasAnyProduct = blocks.some((b) => b.product);
 
   const handleDownload = () => {
-    if (!active) return;
-    if (!hasAnyProduct) return toast.error("Bipe pelo menos um produto");
-    downloadA4Pdf(printTemplate, products, `${active.name.replace(/\s+/g, "_")}_${printBlocks}por_folha.pdf`);
+    if (!active || productQueue.length === 0) return toast.error("Bipe pelo menos um produto");
+    const fullProducts = repeatMode 
+      ? Array.from({ length: blocksPerPage }, () => productQueue[0])
+      : productQueue;
+    
+    downloadA4Pdf(active, fullProducts, `${active.name.replace(/\s+/g, "_")}.pdf`);
     toast.success("PDF gerado");
   };
 
   const handlePrint = () => {
-    if (!active) return;
-    if (!hasAnyProduct) return toast.error("Bipe pelo menos um produto");
+    if (!active || productQueue.length === 0) return toast.error("Bipe pelo menos um produto");
     const usuario = requestPrintUserName();
-    if (config.a4PrinterName) {
-      toast.info(`No dialogo do Windows, escolha a impressora A4: ${config.a4PrinterName}`);
-    }
-    printA4Pdf(printTemplate, products);
-    products.forEach((product) => {
-      if (!product) return;
+    
+    const fullProducts = repeatMode 
+      ? Array.from({ length: blocksPerPage }, () => productQueue[0])
+      : productQueue;
+
+    printA4Pdf(active, fullProducts);
+    
+    productQueue.forEach((product) => {
       storage.pushPrintEvent({
         ean: product.ean,
         descricao: product.descricao,
@@ -193,7 +176,7 @@ export function A4Module({ config }: Props) {
       {/* Toolbar do módulo */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-card px-4 py-2 text-xs">
         <FileText className="h-4 w-4 text-primary" />
-        <strong>Etiquetas A4 / PDF</strong>
+        <strong>A4 / Folha de Etiquetas</strong>
 
         <select
           className="ml-2 h-8 rounded border bg-background px-2 text-xs"
@@ -201,7 +184,7 @@ export function A4Module({ config }: Props) {
           onChange={(e) => { setActiveId(e.target.value); a4Storage.setActive(e.target.value); }}
         >
           {templates.map((t) => (
-            <option key={t.id} value={t.id}>{t.name} · {t.blocks}/folha</option>
+            <option key={t.id} value={t.id}>{t.name} ({t.rows}x{t.cols})</option>
           ))}
         </select>
 
@@ -230,128 +213,124 @@ export function A4Module({ config }: Props) {
 
       {tab === "editor" && (
         <div className="flex-1 overflow-hidden p-3">
-          <A4Editor template={active} product={blocks[0]?.product || null} onChange={updateActive} />
+          <A4Editor template={active} product={productQueue[0] || null} onChange={updateActive} />
         </div>
       )}
 
       {tab === "print" && (
         <div className="grid flex-1 grid-cols-1 gap-4 overflow-auto p-4 lg:grid-cols-[1fr_460px]">
-          <section className="space-y-3">
+          <section className="space-y-4">
             <div className="rounded-lg border bg-card p-4">
-              <Label className="text-xs uppercase opacity-60">Bipar produto</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs uppercase opacity-60">Bipar produtos para a folha</Label>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={repeatMode}
+                      onChange={(e) => {
+                        setRepeatMode(e.target.checked);
+                        if (e.target.checked && productQueue.length > 1) {
+                          setProductQueue([productQueue[0]]);
+                        }
+                      }}
+                    />
+                    <Repeat className="h-3.5 w-3.5" />
+                    Repetir 1º produto na folha toda
+                  </label>
+                </div>
+              </div>
+              
               <div className="mt-2 flex gap-2">
                 <Input
                   ref={inputRef}
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && search()}
-                  placeholder="Bipe ou digite o EAN..."
+                  placeholder="Bipe o EAN do produto..."
                   className="h-12 text-lg"
                   autoFocus
                 />
                 <Button onClick={search} disabled={loading} className="h-12 px-6">
-                  {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Buscar"}
+                  {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Adicionar"}
                 </Button>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-                <div className="flex items-center gap-1">
-                  <span className="mr-1 opacity-70">Dividir A4:</span>
-                  {([1, 2, 4] as const).map((count) => (
-                    <Button
-                      key={count}
-                      type="button"
-                      size="sm"
-                      variant={printBlocks === count ? "default" : "outline"}
-                      className="h-7 px-2 text-xs"
-                      onClick={() => changePrintBlocks(count)}
-                    >
-                      {count}/folha
-                    </Button>
-                  ))}
-                </div>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={repeatMode}
-                    onChange={(e) => setRepeatMode(e.target.checked)}
-                  />
-                  <Repeat className="h-3.5 w-3.5" />
-                  Repetir o mesmo produto em todos os blocos
-                </label>
-                {!repeatMode && (
-                  <span className="rounded bg-primary/10 px-2 py-0.5 text-primary">
-                    Bipando para o bloco {activeBlock + 1} de {printBlocks}
-                  </span>
+              <div className="mt-2 flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">
+                  {repeatMode 
+                    ? "O produto bipado preencherá todos os blocos da página." 
+                    : `Fila atual: ${productQueue.length} etiqueta(s). ${Math.ceil(productQueue.length / blocksPerPage)} página(s) necessária(s).`}
+                </span>
+                {productQueue.length > 0 && (
+                   <Button size="sm" variant="ghost" onClick={clearQueue} className="h-6 text-destructive px-2">
+                    <Trash2 className="h-3 w-3 mr-1" /> Limpar fila
+                  </Button>
                 )}
               </div>
             </div>
 
-            {/* Blocos */}
-            <div className="rounded-lg border bg-card p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Blocos da folha ({printBlocks})</h3>
-                <Button size="sm" variant="ghost" onClick={clearAll}>
-                  <Trash2 className="h-3.5 w-3.5" /> Limpar tudo
-                </Button>
-              </div>
-              <div
-                className={cn(
-                  "grid gap-2",
-                  printBlocks === 1 && "grid-cols-1",
-                  printBlocks === 2 && "grid-cols-1",
-                  printBlocks === 4 && "grid-cols-2",
-                )}
-              >
-                {blocks.map((b, i) => (
-                  <div
-                    key={i}
-                    onClick={() => !repeatMode && setActiveBlock(i)}
-                    className={cn(
-                      "relative cursor-pointer rounded border bg-background p-3 text-sm transition-colors",
-                      !repeatMode && activeBlock === i && "border-primary ring-2 ring-primary/30",
-                    )}
-                  >
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-[10px] uppercase opacity-60">Bloco {i + 1}</span>
-                      {b.product && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); clearBlock(i); }}
-                          className="opacity-60 hover:text-destructive"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                    {b.product ? (
-                      <div>
-                        <div className="font-mono text-[10px] text-muted-foreground">{b.product.ean}</div>
-                        <div className="truncate text-xs font-medium">{b.product.descricao}</div>
-                        <div className="text-xs">
-                          {b.product.precoVarejo != null && <span>R$ {b.product.precoVarejo.toFixed(2).replace(".", ",")}</span>}
+            {/* Lista da Fila */}
+            {!repeatMode && productQueue.length > 0 && (
+              <div className="rounded-lg border bg-card p-4">
+                <h3 className="mb-3 text-sm font-semibold flex items-center gap-2">
+                  Fila de Impressão
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+                    {productQueue.length} itens
+                  </span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[300px] overflow-auto pr-1">
+                  {productQueue.map((p, i) => (
+                    <div key={i} className="group relative flex items-center gap-3 rounded border bg-background p-2 transition-hover hover:border-primary/50">
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate text-xs font-medium">{p.descricao}</div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span className="font-mono">{p.ean}</span>
+                          <span>•</span>
+                          <span className="text-primary font-bold">R$ {p.precoVarejo?.toFixed(2).replace(".", ",")}</span>
                         </div>
                       </div>
-                    ) : (
-                      <div className="text-xs italic opacity-50">vazio — bipe um produto</div>
-                    )}
-                  </div>
-                ))}
+                      <button
+                        onClick={() => removeFromQueue(i)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-destructive"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                      <div className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[8px] font-bold shadow-sm">
+                        {i + 1}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="grid grid-cols-2 gap-2">
-              <Button onClick={handleDownload} disabled={!hasAnyProduct} className="h-12">
-                <Download className="h-4 w-4" /> Gerar PDF
+            <div className="grid grid-cols-2 gap-3">
+              <Button onClick={handleDownload} disabled={productQueue.length === 0} variant="outline" className="h-14 gap-2 border-2">
+                <Download className="h-5 w-5" /> 
+                <div className="flex flex-col items-start">
+                  <span>Gerar PDF</span>
+                  <span className="text-[10px] opacity-60">Para salvar ou e-mail</span>
+                </div>
               </Button>
-              <Button onClick={handlePrint} disabled={!hasAnyProduct} variant="default" className="h-12">
-                <Printer className="h-4 w-4" /> Imprimir PDF
+              <Button onClick={handlePrint} disabled={productQueue.length === 0} variant="default" className="h-14 gap-2 shadow-lg">
+                <Printer className="h-5 w-5" /> 
+                <div className="flex flex-col items-start text-left">
+                  <span>Imprimir Agora</span>
+                  <span className="text-[10px] opacity-80">Enviar direto p/ impressora</span>
+                </div>
               </Button>
             </div>
           </section>
 
-          <aside className="rounded-lg border bg-card p-3">
-            <Label className="text-xs uppercase opacity-60">Pré-visualização A4</Label>
-            <A4Preview template={printTemplate} blocks={blocks} />
+          <aside className="rounded-lg border bg-card p-3 flex flex-col h-full">
+            <Label className="text-xs uppercase opacity-60 mb-2">Visualização da 1ª Página</Label>
+            <div className="flex-1 overflow-auto bg-muted/30 rounded border p-2">
+               <A4Preview template={active} blocks={blocks} />
+            </div>
+            <p className="mt-2 text-center text-[10px] text-muted-foreground italic">
+              * A visualização mostra como os produtos serão organizados na folha.
+            </p>
           </aside>
         </div>
       )}
@@ -359,26 +338,28 @@ export function A4Module({ config }: Props) {
   );
 }
 
-const PREVIEW_SCALE = 1.4;
+const PREVIEW_SCALE = 1.6;
 
 function A4Preview({ template, blocks }: { template: A4Template; blocks: A4FilledBlock[] }) {
-  const rects = getBlockRects(template.blocks);
+  const rects = useMemo(() => getBlockRects(template), [template]);
+  
   return (
-    <div className="mt-2 overflow-auto rounded bg-muted/30 p-3">
-      <div
-        className="mx-auto bg-white shadow"
-        style={{
-          width: A4_WIDTH_MM * PREVIEW_SCALE,
-          height: A4_HEIGHT_MM * PREVIEW_SCALE,
-          position: "relative",
-        }}
-      >
-        {rects.map((rect, i) => {
-          const render = getA4RenderMetrics(template, rect);
-          return (
+    <div
+      className="mx-auto bg-white shadow-xl origin-top"
+      style={{
+        width: A4_WIDTH_MM * PREVIEW_SCALE,
+        height: A4_HEIGHT_MM * PREVIEW_SCALE,
+        position: "relative",
+      }}
+    >
+      {rects.map((rect, i) => {
+        const render = getA4RenderMetrics(template, rect);
+        const product = blocks[i]?.product || null;
+        
+        return (
           <div
             key={i}
-            className="absolute border border-dashed border-primary/30"
+            className="absolute border border-dashed border-muted-foreground/20 overflow-hidden"
             style={{
               left: rect.x * PREVIEW_SCALE,
               top: rect.y * PREVIEW_SCALE,
@@ -386,6 +367,10 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
               height: rect.height * PREVIEW_SCALE,
             }}
           >
+            {template.showBorder && (
+               <div className="absolute inset-0 border border-muted/50" />
+            )}
+            
             <div
               className="absolute"
               style={{
@@ -398,7 +383,7 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
                   el.type === "text"
                     ? el.text || ""
                     : el.type === "dynamic"
-                      ? `${el.prefix || ""}${getDynamicValue(el.field, blocks[i]?.product || null)}`
+                      ? `${el.prefix || ""}${getDynamicValue(el.field, product)}`
                       : "";
                 return (
                   <div
@@ -417,7 +402,7 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
                           "h-full w-full",
                           el.shapeKind !== "line" && "border",
                           el.shapeKind === "circle" && "rounded-full",
-                          el.shapeKind === "roundRect" && "rounded-full",
+                          el.shapeKind === "roundRect" && "rounded-sm",
                         )}
                         style={
                           el.shapeKind === "line"
@@ -446,18 +431,18 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
                         />
                       ) : null
                     ) : el.type === "barcode" ? (
-                      <div className="flex h-full w-full items-center justify-center bg-muted/40 text-[9px]">
-                        ▮▯▮▯ {blocks[i]?.product?.ean || "EAN"}
+                      <div className="flex h-full w-full items-center justify-center bg-muted/40 text-[7px] leading-tight font-mono text-center">
+                        ▮▮▮▮<br />{product?.ean || "EAN"}
                       </div>
                     ) : (
                       <div
                         style={{
-                          fontSize: `${el.fontSize * render.scale * 0.6}pt`,
+                          fontSize: `${el.fontSize * render.scale * 0.42}pt`, // Ajuste de escala para pt em px no preview
                           fontWeight: el.bold ? 700 : 400,
                           fontStyle: el.italic ? "italic" : "normal",
                           textAlign: el.align || "left",
                           color: el.color || "#000",
-                          lineHeight: 1.05,
+                          lineHeight: 1.1,
                         }}
                       >
                         {text}
@@ -468,9 +453,8 @@ function A4Preview({ template, blocks }: { template: A4Template; blocks: A4Fille
               })}
             </div>
           </div>
-          );
-        })}
-      </div>
+        );
+      })}
     </div>
   );
 }

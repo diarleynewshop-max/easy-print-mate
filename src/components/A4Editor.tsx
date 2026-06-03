@@ -47,7 +47,7 @@ function uid() {
 
 export function A4Editor({ template, product, onChange }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const blockRects = useMemo(() => getBlockRects(template.blocks), [template.blocks]);
+  const blockRects = useMemo(() => getBlockRects(template), [template]);
   const firstBlock = blockRects[0];
   const imageInputRef = useRef<HTMLInputElement>(null);
   const selected = template.elements.find((e) => e.id === selectedId) || null;
@@ -58,11 +58,11 @@ export function A4Editor({ template, product, onChange }: Props) {
     const base: A4Element = {
       id: uid(),
       type,
-      x: 8,
-      y: 8,
-      widthMm: type === "barcode" ? 60 : 80,
-      heightMm: type === "barcode" ? 22 : 12,
-      fontSize: type === "barcode" ? 8 : 14,
+      x: 2,
+      y: 2,
+      widthMm: type === "barcode" ? 30 : 20,
+      heightMm: type === "barcode" ? 10 : 5,
+      fontSize: type === "barcode" ? 6 : 10,
       align: "left",
       ...(type === "text" ? { text: "Texto fixo" } : {}),
       ...(type === "dynamic" ? { field: "descricao" as A4DynamicKey } : {}),
@@ -76,10 +76,10 @@ export function A4Editor({ template, product, onChange }: Props) {
     const base: A4Element = {
       id: uid(),
       type: "text",
-      x: 8,
-      y: 8,
-      widthMm: 90,
-      heightMm: Math.max(10, fontSize * 0.7),
+      x: 2,
+      y: 2,
+      widthMm: Math.max(10, firstBlock.width - template.paddingMm * 2 - 4),
+      heightMm: Math.max(5, fontSize * 0.5),
       fontSize,
       bold,
       align: "center",
@@ -91,19 +91,20 @@ export function A4Editor({ template, product, onChange }: Props) {
   };
 
   const addDynamicElement = (field: A4DynamicKey, prefix = "") => {
+    const isPreco = field === "precoVarejo";
     const base: A4Element = {
       id: uid(),
       type: "dynamic",
-      x: 8,
-      y: field === "precoVarejo" ? 45 : 22,
-      widthMm: 90,
-      heightMm: field === "precoVarejo" ? 35 : 16,
-      fontSize: field === "precoVarejo" ? 46 : 16,
-      bold: field === "precoVarejo" || field === "descricao",
+      x: 2,
+      y: isPreco ? 10 : 2,
+      widthMm: Math.max(10, firstBlock.width - template.paddingMm * 2 - 4),
+      heightMm: isPreco ? 8 : 4,
+      fontSize: isPreco ? 16 : 8,
+      bold: isPreco || field === "descricao",
       align: "center",
       field,
       prefix,
-      color: field === "precoVarejo" ? "#e60000" : "#000000",
+      color: isPreco ? "#e60000" : "#000000",
     };
     onChange({ ...template, elements: [...template.elements, base] });
     setSelectedId(base.id);
@@ -113,16 +114,16 @@ export function A4Editor({ template, product, onChange }: Props) {
     const base: A4Element = {
       id: uid(),
       type: "shape",
-      x: 8,
-      y: 8,
-      widthMm: shapeKind === "line" ? 90 : 45,
-      heightMm: shapeKind === "line" ? 2 : 18,
+      x: 2,
+      y: 2,
+      widthMm: shapeKind === "line" ? Math.max(10, firstBlock.width - template.paddingMm * 2 - 4) : 10,
+      heightMm: shapeKind === "line" ? 1 : 10,
       fontSize: 10,
       align: "center",
       shapeKind,
       fillColor: shapeKind === "line" ? "#000000" : "#e60000",
       strokeColor: shapeKind === "line" ? "#000000" : "#e60000",
-      strokeWidthMm: shapeKind === "line" ? 1 : 0,
+      strokeWidthMm: shapeKind === "line" ? 0.5 : 0,
       ...preset,
     };
     onChange({ ...template, elements: [...template.elements, base] });
@@ -190,8 +191,8 @@ export function A4Editor({ template, product, onChange }: Props) {
         });
       } else {
         updateElement(el.id, {
-          widthMm: Math.max(2, Math.round((start.w + dx) * 10) / 10),
-          heightMm: Math.max(2, Math.round((start.h + dy) * 10) / 10),
+          widthMm: Math.max(1, Math.round((start.w + dx) * 10) / 10),
+          heightMm: Math.max(1, Math.round((start.h + dy) * 10) / 10),
         });
       }
     };
@@ -210,16 +211,37 @@ export function A4Editor({ template, product, onChange }: Props) {
           <Label className="text-xs">Nome</Label>
           <Input value={template.name} onChange={(e) => update({ name: e.target.value })} className="h-8 text-sm" />
 
-          <Label className="mt-3 block text-xs">Formato do desenho</Label>
-          <div className="mt-1 grid grid-cols-3 gap-1">
-            {([1, 2, 4] as const).map((n) => (
-              <Button key={n} size="sm" variant={template.blocks === n ? "default" : "outline"} className="h-9 text-xs" onClick={() => update({ blocks: n })}>
-                {n}/folha
-              </Button>
-            ))}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-[10px] uppercase opacity-60">Linhas</Label>
+              <Input type="number" value={template.rows} onChange={(e) => update({ rows: Math.max(1, Number(e.target.value) || 1) })} className="h-8 text-sm" />
+            </div>
+            <div>
+              <Label className="text-[10px] uppercase opacity-60">Colunas</Label>
+              <Input type="number" value={template.cols} onChange={(e) => update({ cols: Math.max(1, Number(e.target.value) || 1) })} className="h-8 text-sm" />
+            </div>
           </div>
 
-          <Label className="mt-3 block text-xs">Margem interna (mm)</Label>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-[10px] uppercase opacity-60">Esp. Linha</Label>
+              <Input type="number" step="0.1" value={template.rowGap} onChange={(e) => update({ rowGap: Number(e.target.value) || 0 })} className="h-8 text-sm" />
+            </div>
+            <div>
+              <Label className="text-[10px] uppercase opacity-60">Esp. Coluna</Label>
+              <Input type="number" step="0.1" value={template.colGap} onChange={(e) => update({ colGap: Number(e.target.value) || 0 })} className="h-8 text-sm" />
+            </div>
+          </div>
+
+          <Label className="mt-3 block text-xs">Margens da Folha (mm)</Label>
+          <div className="grid grid-cols-2 gap-1">
+            <Input type="number" placeholder="Topo" value={template.marginTop} onChange={(e) => update({ marginTop: Number(e.target.value) || 0 })} className="h-8 text-sm" title="Topo" />
+            <Input type="number" placeholder="Base" value={template.marginBottom} onChange={(e) => update({ marginBottom: Number(e.target.value) || 0 })} className="h-8 text-sm" title="Base" />
+            <Input type="number" placeholder="Esq" value={template.marginLeft} onChange={(e) => update({ marginLeft: Number(e.target.value) || 0 })} className="h-8 text-sm" title="Esquerda" />
+            <Input type="number" placeholder="Dir" value={template.marginRight} onChange={(e) => update({ marginRight: Number(e.target.value) || 0 })} className="h-8 text-sm" title="Direita" />
+          </div>
+
+          <Label className="mt-3 block text-xs">Padding Interno do Bloco (mm)</Label>
           <Input type="number" value={template.paddingMm} onChange={(e) => update({ paddingMm: Number(e.target.value) || 0 })} className="h-8 text-sm" />
 
           <label className="mt-3 flex items-center gap-2 text-xs">
@@ -230,8 +252,8 @@ export function A4Editor({ template, product, onChange }: Props) {
 
         <Panel title="Texto">
           <div className="grid grid-cols-2 gap-1">
-            <PaletteButton icon={<Type />} label="Titulo" onClick={() => addTextElement("TITULO", 24, true)} />
-            <PaletteButton icon={<Type />} label="Texto" onClick={() => addTextElement("Texto", 14)} />
+            <PaletteButton icon={<Type />} label="Titulo" onClick={() => addTextElement("TITULO", 14, true)} />
+            <PaletteButton icon={<Type />} label="Texto" onClick={() => addTextElement("Texto", 8)} />
           </div>
         </Panel>
 
@@ -247,8 +269,8 @@ export function A4Editor({ template, product, onChange }: Props) {
         <Panel title="Elementos graficos">
           <div className="grid grid-cols-2 gap-1">
             <PaletteButton icon={<Square />} label="Caixa" onClick={() => addShapeElement("rect")} />
-            <PaletteButton icon={<BadgePercent />} label="Faixa" onClick={() => addShapeElement("roundRect", { widthMm: 65, heightMm: 16 })} />
-            <PaletteButton icon={<Circle />} label="Circulo" onClick={() => addShapeElement("circle", { widthMm: 24, heightMm: 24 })} />
+            <PaletteButton icon={<BadgePercent />} label="Faixa" onClick={() => addShapeElement("roundRect", { widthMm: 20, heightMm: 5 })} />
+            <PaletteButton icon={<Circle />} label="Circulo" onClick={() => addShapeElement("circle", { widthMm: 10, heightMm: 10 })} />
             <PaletteButton icon={<Minus />} label="Linha" onClick={() => addShapeElement("line")} />
           </div>
         </Panel>
@@ -297,7 +319,7 @@ export function A4Editor({ template, product, onChange }: Props) {
       <div className="overflow-auto rounded-lg border bg-muted/30 p-4">
         <div className="mx-auto" style={{ width: A4_WIDTH_MM * MM_TO_PX }}>
           <div className="mb-2 text-center text-[11px] opacity-60">
-            A4 210x297mm - {template.blocks} bloco{template.blocks > 1 ? "s" : ""} - edite o bloco 1
+            A4 210x297mm - {template.rows}x{template.cols} - edite o bloco 1
           </div>
           <div className="relative bg-white shadow" style={{ width: A4_WIDTH_MM * MM_TO_PX, height: A4_HEIGHT_MM * MM_TO_PX }}>
             {blockRects.map((rect, blockIdx) => (
