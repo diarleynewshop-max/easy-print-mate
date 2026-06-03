@@ -468,12 +468,19 @@ ipcMain.handle("db:get-max-id", () => {
 });
 
 ipcMain.handle("app:check-for-updates", async () => {
-  if (!app.isPackaged) return { message: "Modo desenvolvimento - atualização desativada" };
+  if (!app.isPackaged) return { success: false, message: "Modo desenvolvimento - atualização desativada" };
   try {
     const result = await autoUpdater.checkForUpdates();
     return { success: true, updateInfo: result?.updateInfo };
   } catch (error) {
-    return { success: false, message: error.message };
+    let msg = error.message || "Erro desconhecido";
+    // Se o erro for uma string JSON longa (comum em HttpError do electron-updater)
+    if (msg.includes("method:") || msg.includes("headers:")) {
+      if (msg.includes("404")) msg = "Nenhuma atualização encontrada no servidor (404).";
+      else if (msg.includes("403")) msg = "Acesso negado ao servidor de atualizações (403).";
+      else msg = "Falha ao conectar com servidor de atualizações (Erro HTTP).";
+    }
+    return { success: false, message: msg };
   }
 });
 
