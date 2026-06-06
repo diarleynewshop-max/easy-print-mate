@@ -61,19 +61,23 @@ npm run app
 
 O instalador ja leva o app e as dependencias empacotadas. No PC do cliente nao precisa rodar `npm install`.
 
+**Windows:**
 ```bash
 npm install
 npm run dist:win
 ```
 
-Arquivos gerados:
-
-```txt
-release\Easy Print Mate Setup.exe
-release\Easy Print Mate Portable.exe
+**Linux:**
+```bash
+npm install
+npm run dist:linux
 ```
 
-Use `Easy Print Mate Setup.exe` para instalar em outro PC. O app cria automaticamente esta pasta no primeiro uso:
+Arquivos gerados:
+- Windows: `release\Easy Print Mate Setup.exe` e `release\Easy Print Mate Portable.exe`
+- Linux: `release\Easy-Print-Mate-1.7.11.AppImage` e `release\easy-print-mate_1.7.11_amd64.deb`
+
+Use `Easy Print Mate Setup.exe` para instalar no Windows. No Linux, o AppImage pode ser executado diretamente ou instalado via .deb. O app cria automaticamente esta pasta no primeiro uso:
 
 ```txt
 ...\Documentos\Easy Print Mate
