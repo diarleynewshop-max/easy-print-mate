@@ -169,13 +169,17 @@ function writeStore(data) {
 
 function createWindow() {
   ensureDataDir();
+  const iconPath = process.platform === "win32" 
+    ? path.join(__dirname, "..", "build", "icon.ico")
+    : path.join(__dirname, "..", "build", "icon.png");
+
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 1100,
     minHeight: 720,
     title: "Easy Print Mate",
-    icon: path.join(__dirname, "..", "build", "icon.ico"),
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -234,6 +238,38 @@ function runPowerShellPrint(filePath, printerName) {
     child.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(output || `powershell saiu com codigo ${code}`));
+    });
+  });
+}
+
+function runLpPrint(filePath, printerName) {
+  return new Promise((resolve, reject) => {
+    // lp -d "Printer_Name" -o raw /path/to/file.prn
+    const child = spawn("lp", [
+      "-d",
+      printerName,
+      "-o",
+      "raw",
+      filePath
+    ]);
+
+    let output = "";
+    child.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+    child.stderr.on("data", (data) => {
+      output += data.toString();
+    });
+    child.on("error", (err) => {
+      if (err.code === "ENOENT") {
+        reject(new Error("Comando 'lp' não encontrado. Certifique-se de que o CUPS está instalado."));
+      } else {
+        reject(err);
+      }
+    });
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(output || `lp saiu com codigo ${code}`));
     });
   });
 }
@@ -384,7 +420,11 @@ ipcMain.handle("print:raw-prn", async (_event, content, printerName = RAW_PRINTE
   await fsp.writeFile(savedPath, content, "ascii");
   await fsp.writeFile(tempPath, content, "ascii");
   try {
-    await runPowerShellPrint(tempPath, selectedPrinter);
+    if (process.platform === "win32") {
+      await runPowerShellPrint(tempPath, selectedPrinter);
+    } else {
+      await runLpPrint(tempPath, selectedPrinter);
+    }
     return { ok: true, printerName: selectedPrinter, savedPath };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha desconhecida ao imprimir";

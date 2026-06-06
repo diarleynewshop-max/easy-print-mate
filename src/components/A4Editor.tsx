@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
   Layers,
   Minus,
+  Plus,
   Square,
   Trash2,
   Type,

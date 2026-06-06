@@ -2,9 +2,15 @@
 
 Este arquivo registra as decisões arquiteturais e o progresso das correções feitas na impressora Elgin L42 Pro Full.
 
-## Estado Atual: Versão 1.7.8
+## Estado Atual: Versão 1.7.11
 
-### 1. Zoom Dinâmico (v1.7.8)
+### 1. Compatibilidade Linux (v1.7.11)
+- **Impressão Raw (CUPS):** Implementada função `runLpPrint` que utiliza o comando `lp -o raw` para enviar arquivos PRN diretamente para impressoras no Linux. O sistema agora detecta o OS e escolhe entre PowerShell (Windows) ou CUPS (Linux).
+- **Build Multi-plataforma:** Adicionados targets `AppImage` e `deb` no `package.json`, permitindo a geração de instaladores para distribuições Linux.
+- **Ícones Adaptativos:** O app agora utiliza `icon.png` em sistemas não-Windows para garantir compatibilidade visual com ambientes Linux (GNOME, KDE, etc).
+- **Paths Cross-platform:** Validada a estrutura de pastas usando `app.getPath("documents")`, garantindo que os dados fiquem em `~/Documents/Easy Print Mate` no Linux.
+
+### 2. Zoom Dinâmico (v1.7.8)
 - **A4 Preview & Editor Zoom:** Implementado sistema de zoom (40% a 300%) para o módulo A4. Agora é possível ampliar a visualização da folha e o editor para ajustes milimétricos em etiquetas densas (ex: Pimaco 60).
 
 ### 2. Flexibilidade de Validação (v1.7.7)

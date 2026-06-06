@@ -17,6 +17,7 @@ import {
   Printer,
   Download,
   Plus,
+  Minus,
   Copy,
   Trash2,
   Pencil,
