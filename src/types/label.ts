@@ -5,6 +5,7 @@ export interface Product {
   descricao: string;
   precoVarejo?: number;
   precoAtacado?: number;
+  precoOriginal?: number;
   secao?: string;
   grupo?: string;
   estoque?: number;
@@ -17,6 +18,7 @@ export type LabelFieldKey =
   | "descricao"
   | "precoVarejo"
   | "precoAtacado"
+  | "precoOriginal"
   | "ean"
   | "barcode"
   | "secao"

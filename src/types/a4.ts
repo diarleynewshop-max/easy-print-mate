@@ -8,6 +8,7 @@ export type A4DynamicKey =
   | "codigoInterno"
   | "precoVarejo"
   | "precoAtacado"
+  | "precoOriginal"
   | "secao"
   | "grupo"
   | "estoque"

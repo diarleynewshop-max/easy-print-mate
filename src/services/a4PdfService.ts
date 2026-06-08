@@ -56,6 +56,7 @@ export function getDynamicValue(key: A4DynamicKey | undefined, p: Product | null
       codigoInterno: "1234",
       precoVarejo: "9,90",
       precoAtacado: "8,50",
+      precoOriginal: "12,90",
       secao: "Seção",
       grupo: "Grupo",
       estoque: "10",
@@ -74,6 +75,8 @@ export function getDynamicValue(key: A4DynamicKey | undefined, p: Product | null
       return formatBRL(p.precoVarejo);
     case "precoAtacado":
       return formatBRL(p.precoAtacado);
+    case "precoOriginal":
+      return formatBRL(p.precoOriginal);
     case "secao":
       return p.secao || "";
     case "grupo":
@@ -300,9 +303,22 @@ export function downloadA4Pdf(template: A4Template, products: (Product | null)[]
   doc.save(filename);
 }
 
-export function printA4Pdf(template: A4Template, products: (Product | null)[]) {
+export function printA4Pdf(template: A4Template, products: (Product | null)[], printerName?: string) {
   const doc = renderA4Pdf(template, products);
   const url = doc.output("bloburl");
+
+  if (window.easyPrint?.isDesktop) {
+    // No desktop, usamos o IPC para imprimir diretamente na impressora selecionada
+    const dataUrl = doc.output("dataurlstring");
+    window.easyPrint.printPdf(dataUrl, printerName || "")
+      .catch((err) => {
+        console.error("Erro ao imprimir PDF no Desktop:", err);
+        // Fallback: abre no navegador se falhar o silent print
+        window.open(url as unknown as string, "_blank")?.print();
+      });
+    return;
+  }
+
   const w = window.open(url as unknown as string, "_blank");
   if (w) {
     setTimeout(() => {

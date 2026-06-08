@@ -45,6 +45,7 @@ function getValue(key: string, p: Product | null, field?: LabelField): string {
       descricao: applyDescriptionMode(field, "PRD-001 PRODUTO EXEMPLO", "PRD-001"),
       precoVarejo: "9,90",
       precoAtacado: "8,50",
+      precoOriginal: "12,90",
       ean: "7891234567890",
       secao: "Secao",
       estoque: "10",
@@ -60,6 +61,8 @@ function getValue(key: string, p: Product | null, field?: LabelField): string {
       return formatBRL(p.precoVarejo);
     case "precoAtacado":
       return formatBRL(p.precoAtacado);
+    case "precoOriginal":
+      return formatBRL(p.precoOriginal);
     case "ean":
       return p.codigo_barras || p.ean;
     case "secao":

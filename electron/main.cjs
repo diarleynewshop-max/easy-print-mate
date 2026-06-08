@@ -31,6 +31,7 @@ function initDb() {
         grupo TEXT,
         preco_varejo REAL,
         preco_atacado REAL,
+        preco_original REAL,
         estoque REAL,
         image_url TEXT,
         ultima_alteracao DATETIME,
@@ -47,14 +48,23 @@ function initDb() {
       CREATE INDEX IF NOT EXISTS idx_produtos_descricao ON produtos(descricao);
     `);
 
-    // Migração: Garante que a coluna ultima_alteracao exista (para quem já tinha o app instalado)
+    // Migração: Garante que colunas novas existam
     const tableInfo = db.prepare("PRAGMA table_info(produtos)").all();
     const hasUltimaAlteracao = tableInfo.some(col => col.name === "ultima_alteracao");
     if (!hasUltimaAlteracao) {
       try {
         db.exec("ALTER TABLE produtos ADD COLUMN ultima_alteracao DATETIME");
       } catch (e) {
-        console.error("Erro ao adicionar coluna: ", e.message);
+        console.error("Erro ao adicionar coluna ultima_alteracao: ", e.message);
+      }
+    }
+
+    const hasPrecoOriginal = tableInfo.some(col => col.name === "preco_original");
+    if (!hasPrecoOriginal) {
+      try {
+        db.exec("ALTER TABLE produtos ADD COLUMN preco_original REAL");
+      } catch (e) {
+        console.error("Erro ao adicionar coluna preco_original: ", e.message);
       }
     }
 
@@ -434,12 +444,49 @@ ipcMain.handle("print:raw-prn", async (_event, content, printerName = RAW_PRINTE
   }
 });
 
+ipcMain.handle("print:pdf", async (_event, pdfDataUrl, printerName) => {
+  if (!pdfDataUrl) throw new Error("PDF data URL vazio");
+  
+  // No Windows/Mac, o BrowserWindow consegue carregar um PDF dataurl e imprimir.
+  const win = new BrowserWindow({ 
+    show: false, 
+    webPreferences: { 
+      nodeIntegration: false, 
+      contextIsolation: true,
+      plugins: true // Necessário para o visualizador de PDF interno
+    } 
+  });
+  
+  return new Promise((resolve, reject) => {
+    win.loadURL(pdfDataUrl).then(() => {
+      // Aguarda um pouco para o PDF carregar totalmente no visualizador
+      setTimeout(() => {
+        const options = {
+          silent: !!printerName,
+          deviceName: printerName || "",
+          printBackground: true,
+          margins: { marginType: "none" }
+        };
+
+        win.webContents.print(options, (success, failureReason) => {
+          win.close();
+          if (success) resolve({ ok: true });
+          else reject(new Error(failureReason || "Falha na impressão PDF"));
+        });
+      }, 1500);
+    }).catch(err => {
+      win.close();
+      reject(err);
+    });
+  });
+});
+
 ipcMain.handle("db:sync-products", (_event, products) => {
   const insert = db.prepare(`
     INSERT OR REPLACE INTO produtos (
-      id, ean, codigo_barras, descricao, codigo_interno, secao, grupo, preco_varejo, preco_atacado, estoque, image_url, ultima_alteracao
+      id, ean, codigo_barras, descricao, codigo_interno, secao, grupo, preco_varejo, preco_atacado, preco_original, estoque, image_url, ultima_alteracao
     ) VALUES (
-      @id, @ean, @codigo_barras, @descricao, @codigo_interno, @secao, @grupo, @preco_varejo, @preco_atacado, @estoque, @image_url, @ultima_alteracao
+      @id, @ean, @codigo_barras, @descricao, @codigo_interno, @secao, @grupo, @preco_varejo, @preco_atacado, @preco_original, @estoque, @image_url, @ultima_alteracao
     )
   `);
 
@@ -455,6 +502,7 @@ ipcMain.handle("db:sync-products", (_event, products) => {
         grupo: String(item.grupo || ""),
         preco_varejo: Number(item.precoVarejo || 0),
         preco_atacado: Number(item.precoAtacado || 0),
+        preco_original: Number(item.precoOriginal || 0),
         estoque: Number(item.estoque || 0),
         image_url: String(item.imageUrl || ""),
         ultima_alteracao: item.ultimaAlteracao || null
@@ -484,6 +532,7 @@ ipcMain.handle("db:search-products", (_event, query) => {
     grupo: row.grupo,
     precoVarejo: row.preco_varejo,
     precoAtacado: row.preco_atacado,
+    precoOriginal: row.preco_original,
     estoque: row.estoque,
     imageUrl: row.image_url
   }));

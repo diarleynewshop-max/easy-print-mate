@@ -185,7 +185,7 @@ function normalizarPreco(precoVenda, precoOferta) {
 
 async function buscarPrecos(baseUrl, token, produtoId, lojaId, debug) {
   const result = await fetchErpJson(baseUrl, token, `/v1/produto/produtos/${encodeURIComponent(produtoId)}/precos`, debug, `precos:${produtoId}`);
-  if (!result.response.ok) return { precoVarejo: 0, precoAtacado: 0 };
+  if (!result.response.ok) return { precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 };
   const precos = getItems(result.data);
   const selecionado = lojaId ? precos.find((preco) => Number(preco.lojaId) === lojaId) || precos[0] : precos[0];
 
@@ -194,6 +194,7 @@ async function buscarPrecos(baseUrl, token, produtoId, lojaId, debug) {
     debug.push({ step: "preco-fields", path: `produto/${produtoId}/precos`, message: keys.map((k) => `${k}=${JSON.stringify(selecionado[k])}`).join("; ") });
   }
 
+  const precoOriginal = selecionado?.precoVenda1 || 0;
   const precoVarejo = normalizarPreco(
     selecionado?.precoVenda1 ?? selecionado?.precoVenda ?? selecionado?.preco ?? selecionado?.precoVenda1Loja,
     selecionado?.precoOferta1 ?? selecionado?.precoOferta ?? selecionado?.precoPromocional,
@@ -202,7 +203,7 @@ async function buscarPrecos(baseUrl, token, produtoId, lojaId, debug) {
     selecionado?.precoVenda2 ?? selecionado?.precoAtacado ?? selecionado?.precoVenda2Loja,
     selecionado?.precoOferta2,
   );
-  return { precoVarejo, precoAtacado };
+  return { precoVarejo, precoAtacado, precoOriginal };
 }
 
 async function buscarEstoque(baseUrl, token, produtoId, lojaId, debug) {
@@ -263,13 +264,13 @@ async function consultarProduto({ codigo, empresa: empresaInput, companyName, lo
   const produtoId = String(produto.id);
   const lojaAtiva = Number.isFinite(lojaId) ? Number(lojaId) : ERP_LOJA_BY_EMPRESA[empresa] || 1;
   const [precos, estoque, secao, grupo] = await Promise.all([
-    buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch(() => ({ precoVarejo: 0, precoAtacado: 0 })),
+    buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch(() => ({ precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 })),
     buscarEstoque(baseUrl, token, produtoId, lojaAtiva, debug).catch(() => undefined),
     buscarSecao(baseUrl, token, produto.secaoId, debug).catch(() => ""),
     buscarGrupo(baseUrl, token, produto.secaoId, produto.grupoId, debug).catch(() => ""),
   ]);
 
-  const imageUrl = produto.urlFoto || produto.fotoPrincipal || produto.urlImagem || produto.imagem || produto.foto || undefined;
+  const imageUrl = produto.urlFoto || produto.fotoPrincipal || produto.urlFotoPrincipal || produto.urlImagem || produto.imagem || produto.foto || undefined;
   if (!imageUrl) {
     const imageKeys = Object.keys(produto).filter((k) => /foto|imagem|image|photo|url/i.test(k));
     if (imageKeys.length) debug.push({ step: "image-fields-found", path: "produto", message: imageKeys.map((k) => `${k}=${JSON.stringify(produto[k])}`).join("; ") });
@@ -286,6 +287,7 @@ async function consultarProduto({ codigo, empresa: empresaInput, companyName, lo
       grupo: produto.grupo?.descricao || grupo || undefined,
       precoVarejo: precos.precoVarejo,
       precoAtacado: precos.precoAtacado,
+      precoOriginal: precos.precoOriginal,
       estoque,
       imageUrl: imageUrl || undefined,
     },

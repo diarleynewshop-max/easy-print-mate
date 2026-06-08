@@ -290,7 +290,7 @@ async function buscarPrecos(
   produtoId: string,
   lojaId: number | undefined,
   debug: DebugStep[]
-): Promise<PrecosNormalizados> {
+): Promise<PrecosNormalizados & { precoOriginal: number }> {
   const result = await fetchErpJson<ErpPreco[] | { items?: ErpPreco[] }>(
     baseUrl,
     token,
@@ -299,13 +299,14 @@ async function buscarPrecos(
     `precos:${produtoId}`
   );
 
-  if (!result.response.ok) return { precoVarejo: 0, precoAtacado: 0 };
+  if (!result.response.ok) return { precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 };
 
   const precos = getItems<ErpPreco>(result.data);
   const lojaAtiva = Number.isFinite(lojaId) ? lojaId : undefined;
   const selecionado = lojaAtiva ? precos.find((preco) => Number(preco.lojaId) === lojaAtiva) || precos[0] : precos[0];
 
   return {
+    precoOriginal: selecionado?.precoVenda1 || 0,
     precoVarejo: normalizarPreco(selecionado?.precoVenda1, selecionado?.precoOferta1),
     precoAtacado: normalizarPreco(selecionado?.precoVenda2 ?? selecionado?.precoAtacado, selecionado?.precoOferta2),
   };
@@ -415,9 +416,9 @@ async function consultarPrecoProdutoVarejoFacil(
   const produtoId = String(produto.id);
   const lojaAtiva = getErpLojaAtiva(empresa, lojaId);
   const [precos, estoque, secao, grupo] = await Promise.all([
-    buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch((error): PrecosNormalizados => {
+    buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch((error): PrecosNormalizados & { precoOriginal: number } => {
       debug.push({ step: "precos-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
-      return { precoVarejo: 0, precoAtacado: 0 };
+      return { precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 };
     }),
     buscarEstoque(baseUrl, token, produtoId, lojaAtiva, debug).catch((error) => {
       debug.push({ step: "estoque-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
@@ -443,6 +444,7 @@ async function consultarPrecoProdutoVarejoFacil(
     grupo: produto.grupo?.descricao || grupo || undefined,
     precoVarejo: precos.precoVarejo,
     precoAtacado: precos.precoAtacado,
+    precoOriginal: precos.precoOriginal,
     estoque,
   };
 }

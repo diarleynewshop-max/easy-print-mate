@@ -17,6 +17,7 @@ export interface EasyPrintBridge {
   fetchProductByEan: (config: VFConfig, codigo: string) => Promise<{ product: Product; debug: any }>;
   erpListProducts: (config: VFConfig, pagina: number, quantidade: number, lastSync?: string) => Promise<{ items: Product[]; total: number; debug: any }>;
   printRawPrn: (content: string, printerName: string) => Promise<{ ok: boolean; savedPath: string }>;
+  printPdf: (pdfDataUrl: string, printerName: string) => Promise<{ ok: boolean }>;
   printHealth: (printerName: string) => Promise<{ ok: boolean; printerName: string; printerFound: boolean }>;
   dbSyncProducts: (products: Product[]) => Promise<{ success: boolean; count: number }>;
   dbSearchProducts: (query: string) => Promise<Product[]>;

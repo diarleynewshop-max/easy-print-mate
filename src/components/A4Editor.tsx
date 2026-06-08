@@ -37,6 +37,7 @@ const DYNAMIC_LABELS: Record<A4DynamicKey, string> = {
   codigoInterno: "Codigo interno",
   precoVarejo: "Preco varejo",
   precoAtacado: "Preco atacado",
+  precoOriginal: "Preco Original (De:)",
   secao: "Secao",
   grupo: "Grupo",
   estoque: "Estoque",
@@ -264,6 +265,7 @@ export function A4Editor({ template, product, onChange }: Props) {
           <div className="grid grid-cols-2 gap-1">
             <PaletteButton icon={<Database />} label="Descricao" onClick={() => addDynamicElement("descricao")} />
             <PaletteButton icon={<Database />} label="Preco" onClick={() => addDynamicElement("precoVarejo", "R$ ")} />
+            <PaletteButton icon={<Database />} label="Preco De" onClick={() => addDynamicElement("precoOriginal", "De: R$ ")} />
             <PaletteButton icon={<Database />} label="EAN" onClick={() => addDynamicElement("ean")} />
             <PaletteButton icon={<ImageIcon className="text-primary" />} label="Foto ERP" onClick={() => addDynamicElement("imageUrl")} />
             <PaletteButton icon={<BarcodeIcon />} label="Barras" onClick={() => addElement("barcode")} />

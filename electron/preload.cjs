@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("easyPrint", {
   fetchProductByEan: (config, codigo) => ipcRenderer.invoke("erp:fetch-product", config, codigo),
   erpListProducts: (config, pagina, quantidade, dataAlteracao) => ipcRenderer.invoke("erp:list-products", config, pagina, quantidade, dataAlteracao),
   printRawPrn: (content, printerName) => ipcRenderer.invoke("print:raw-prn", content, printerName),
+  printPdf: (pdfDataUrl, printerName) => ipcRenderer.invoke("print:pdf", pdfDataUrl, printerName),
   printHealth: (printerName) => ipcRenderer.invoke("print:health", printerName),
   dbSyncProducts: (products) => ipcRenderer.invoke("db:sync-products", products),
   dbSearchProducts: (query) => ipcRenderer.invoke("db:search-products", query),

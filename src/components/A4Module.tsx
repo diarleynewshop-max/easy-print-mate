@@ -137,13 +137,14 @@ export function A4Module({ config }: Props) {
 
   const handlePrint = () => {
     if (!active || productQueue.length === 0) return toast.error("Bipe pelo menos um produto");
+    const currentConfig = storage.getConfig();
     const usuario = requestPrintUserName();
     
     const fullProducts = repeatMode 
       ? Array.from({ length: blocksPerPage }, () => productQueue[0])
       : productQueue;
 
-    printA4Pdf(active, fullProducts);
+    printA4Pdf(active, fullProducts, currentConfig.a4PrinterName);
     
     productQueue.forEach((product) => {
       storage.pushPrintEvent({
@@ -289,7 +290,14 @@ export function A4Module({ config }: Props) {
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                           <span className="font-mono">{p.ean}</span>
                           <span>•</span>
-                          <span className="text-primary font-bold">R$ {p.precoVarejo?.toFixed(2).replace(".", ",")}</span>
+                          {p.precoOriginal && p.precoOriginal > (p.precoVarejo || 0) ? (
+                            <>
+                              <span className="line-through opacity-60">R$ {p.precoOriginal.toFixed(2).replace(".", ",")}</span>
+                              <span className="text-primary font-bold">R$ {p.precoVarejo?.toFixed(2).replace(".", ",")}</span>
+                            </>
+                          ) : (
+                            <span className="text-primary font-bold">R$ {p.precoVarejo?.toFixed(2).replace(".", ",")}</span>
+                          )}
                         </div>
                       </div>
                       <button

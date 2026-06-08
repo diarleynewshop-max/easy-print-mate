@@ -52,6 +52,8 @@ function fieldValue(field: LabelField, product: Product) {
       return `${field.label ? `${field.label} ` : ""}${formatBRL(product.precoVarejo)}`.trim();
     case "precoAtacado":
       return `${field.label ? `${field.label} ` : ""}${formatBRL(product.precoAtacado)}`.trim();
+    case "precoOriginal":
+      return `${field.label ? `${field.label} ` : ""}${formatBRL(product.precoOriginal)}`.trim();
     case "ean":
       return product.codigo_barras || product.ean;
     case "secao":
