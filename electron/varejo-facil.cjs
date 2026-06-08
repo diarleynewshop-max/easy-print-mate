@@ -177,6 +177,19 @@ async function buscarCodigoAuxiliarPorEan(baseUrl, token, codigo, debug) {
   return null;
 }
 
+function normalizarPrecos(precoVenda, precoOferta) {
+  const venda = typeof precoVenda === "number" && precoVenda > 0 ? precoVenda : 0;
+  const oferta = typeof precoOferta === "number" && precoOferta > 0 ? precoOferta : 0;
+
+  if (oferta > 0 && oferta < venda) {
+    return { varejo: oferta, original: venda };
+  }
+  if (oferta > 0 && oferta >= venda) {
+    return { varejo: oferta, original: venda };
+  }
+  return { varejo: venda, original: venda };
+}
+
 function normalizarPreco(precoVenda, precoOferta) {
   if (typeof precoOferta === "number" && precoOferta > 0) return precoOferta;
   if (typeof precoVenda === "number") return precoVenda;
@@ -194,8 +207,7 @@ async function buscarPrecos(baseUrl, token, produtoId, lojaId, debug) {
     debug.push({ step: "preco-fields", path: `produto/${produtoId}/precos`, message: keys.map((k) => `${k}=${JSON.stringify(selecionado[k])}`).join("; ") });
   }
 
-  const precoOriginal = selecionado?.precoVenda1 || 0;
-  const precoVarejo = normalizarPreco(
+  const norm = normalizarPrecos(
     selecionado?.precoVenda1 ?? selecionado?.precoVenda ?? selecionado?.preco ?? selecionado?.precoVenda1Loja,
     selecionado?.precoOferta1 ?? selecionado?.precoOferta ?? selecionado?.precoPromocional,
   );
@@ -203,7 +215,7 @@ async function buscarPrecos(baseUrl, token, produtoId, lojaId, debug) {
     selecionado?.precoVenda2 ?? selecionado?.precoAtacado ?? selecionado?.precoVenda2Loja,
     selecionado?.precoOferta2,
   );
-  return { precoVarejo, precoAtacado, precoOriginal };
+  return { precoVarejo: norm.varejo, precoAtacado, precoOriginal: norm.original };
 }
 
 async function buscarEstoque(baseUrl, token, produtoId, lojaId, debug) {

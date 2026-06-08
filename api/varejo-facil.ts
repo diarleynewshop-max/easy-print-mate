@@ -278,6 +278,24 @@ async function buscarCodigoAuxiliarPorEan(
   return null;
 }
 
+function normalizarPrecos(precoVenda?: number, precoOferta?: number): { varejo: number; original: number } {
+  const venda = typeof precoVenda === "number" && precoVenda > 0 ? precoVenda : 0;
+  const oferta = typeof precoOferta === "number" && precoOferta > 0 ? precoOferta : 0;
+
+  // Se houver oferta, o "Original" é o de venda e o "Varejo" é a oferta.
+  if (oferta > 0 && oferta < venda) {
+    return { varejo: oferta, original: venda };
+  }
+
+  // Se a oferta for maior ou igual à venda (erro de cadastro?), usamos a venda como principal.
+  if (oferta > 0 && oferta >= venda) {
+    return { varejo: oferta, original: venda };
+  }
+
+  // Sem oferta: original e varejo são o mesmo.
+  return { varejo: venda, original: venda };
+}
+
 function normalizarPreco(precoVenda?: number, precoOferta?: number): number {
   if (typeof precoOferta === "number" && precoOferta > 0) return precoOferta;
   if (typeof precoVenda === "number") return precoVenda;
@@ -305,9 +323,11 @@ async function buscarPrecos(
   const lojaAtiva = Number.isFinite(lojaId) ? lojaId : undefined;
   const selecionado = lojaAtiva ? precos.find((preco) => Number(preco.lojaId) === lojaAtiva) || precos[0] : precos[0];
 
+  const norm = normalizarPrecos(selecionado?.precoVenda1, selecionado?.precoOferta1);
+
   return {
-    precoOriginal: selecionado?.precoVenda1 || 0,
-    precoVarejo: normalizarPreco(selecionado?.precoVenda1, selecionado?.precoOferta1),
+    precoOriginal: norm.original,
+    precoVarejo: norm.varejo,
     precoAtacado: normalizarPreco(selecionado?.precoVenda2 ?? selecionado?.precoAtacado, selecionado?.precoOferta2),
   };
 }
