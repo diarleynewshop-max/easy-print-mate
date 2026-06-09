@@ -1,5 +1,12 @@
 import { VFConfig, Product, PrintEvent } from "./label";
 
+export interface ErpSyncState {
+  running: boolean;
+  lastRun: string | null;
+  lastCount: number;
+  error: string | null;
+}
+
 export interface EasyPrintBridge {
   isDesktop: boolean;
   getInfo: () => Promise<{
@@ -25,6 +32,10 @@ export interface EasyPrintBridge {
   dbSetLastSync: (chave: string, valor: string) => Promise<boolean>;
   dbGetMaxId: () => Promise<number>;
   appCheckForUpdates: () => Promise<{ success: boolean; updateInfo?: any; message?: string }>;
+  erpSyncStatus: () => Promise<ErpSyncState>;
+  erpTriggerSync: () => Promise<boolean>;
+  onSyncUpdate: (cb: (data: ErpSyncState) => void) => void;
+  offSyncUpdate: (cb: (data: ErpSyncState) => void) => void;
 }
 
 declare global {

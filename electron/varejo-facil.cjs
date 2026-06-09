@@ -345,4 +345,61 @@ async function listarProdutosPaginado({ empresa: empresaInput, companyName, base
   };
 }
 
-module.exports = { consultarProduto, loadErpEnv, listarProdutosPaginado };
+async function sincronizarAlterados({ empresa: empresaInput, companyName, baseUrl: configuredBaseUrl,
+  token: configuredToken, username: configuredUsername, password: configuredPassword,
+  loja, dataAlteracao, quantidade = 200 }) {
+
+  const empresa = normalizeEmpresa(companyName || empresaInput);
+  const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
+  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
+  const lojaId = lojaParam ? Number(lojaParam) : (ERP_LOJA_BY_EMPRESA[empresa] || 1);
+  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
+
+  // Coleta todos os produtos alterados (paginado)
+  let pagina = 1;
+  let todos = [];
+  while (true) {
+    let requestPath = `/v1/produto/produtos?page=${pagina}&count=${quantidade}`;
+    if (dataAlteracao) requestPath += `&dataAlteracao=${encodeURIComponent(dataAlteracao)}`;
+
+    const result = await fetchErpJson(baseUrl, token, requestPath, [], `sync-p${pagina}`);
+    if (!result.response.ok) break;
+
+    const items = getItems(result.data);
+    if (items.length === 0) break;
+    todos = todos.concat(items);
+
+    const total = result.data?.total || items.length;
+    if (todos.length >= total || items.length < quantidade) break;
+    pagina++;
+  }
+
+  if (todos.length === 0) return [];
+
+  // Busca preços em paralelo (max 5 simultâneos)
+  const CONCURRENCY = 5;
+  const enriched = [];
+  for (let i = 0; i < todos.length; i += CONCURRENCY) {
+    const batch = todos.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(batch.map(async (p) => {
+      const precos = await buscarPrecos(baseUrl, token, String(p.id), lojaId, [])
+        .catch(() => ({ precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 }));
+      return {
+        id: String(p.id),
+        ean: p.gtin || p.codigoBarras || "",
+        codigo_barras: p.gtin || p.codigoBarras || "",
+        descricao: p.descricao || p.descricaoReduzida || "",
+        codigoInterno: p.codigoInterno || "",
+        precoVarejo: precos.precoVarejo,
+        precoAtacado: precos.precoAtacado,
+        precoOriginal: precos.precoOriginal,
+        ultimaAlteracao: p.dataAtualizacao || p.dataAlteracao || null
+      };
+    }));
+    enriched.push(...results);
+  }
+
+  return enriched;
+}
+
+module.exports = { consultarProduto, loadErpEnv, listarProdutosPaginado, sincronizarAlterados };

@@ -4,7 +4,7 @@ const fsp = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const { consultarProduto, loadErpEnv, listarProdutosPaginado } = require("./varejo-facil.cjs");
+const { consultarProduto, loadErpEnv, listarProdutosPaginado, sincronizarAlterados } = require("./varejo-facil.cjs");
 const { autoUpdater } = require("electron-updater");
 const Database = require("better-sqlite3");
 
@@ -614,10 +614,97 @@ function setupAutoUpdater() {
   setTimeout(() => autoUpdater.checkForUpdates(), 5000);
 }
 
+// --- Worker de auto-sync ERP → SQLite ---
+let autoSyncTimer = null;
+let syncState = { running: false, lastRun: null, lastCount: 0, error: null };
+
+function getErpConfig() {
+  try {
+    const raw = readStore()["vf_api_config"];
+    if (!raw) return null;
+    const cfg = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const hasCredentials = cfg.token || (cfg.username && cfg.password);
+    return hasCredentials ? cfg : null;
+  } catch { return null; }
+}
+
+function notifyWindows(channel, data) {
+  BrowserWindow.getAllWindows().forEach(win => {
+    if (!win.isDestroyed()) win.webContents.send(channel, data);
+  });
+}
+
+async function runAutoSyncCycle() {
+  if (syncState.running) return;
+  const config = getErpConfig();
+  if (!config) return;
+
+  syncState = { ...syncState, running: true };
+  notifyWindows("erp:sync-status", syncState);
+
+  try {
+    const lastSyncRow = db.prepare("SELECT valor FROM sync_meta WHERE chave = 'auto_sync_last'").get();
+    const lastSync = lastSyncRow?.valor || null;
+    const now = new Date().toISOString().slice(0, 19);
+
+    // Primeira execução: marca timestamp e aguarda próximo ciclo
+    if (!lastSync) {
+      db.prepare("INSERT OR REPLACE INTO sync_meta (chave, valor, atualizado_em) VALUES ('auto_sync_last', ?, CURRENT_TIMESTAMP)").run(now);
+      syncState = { running: false, lastRun: now, lastCount: 0, error: null };
+      notifyWindows("erp:sync-status", syncState);
+      return;
+    }
+
+    const produtos = await sincronizarAlterados({ ...config, dataAlteracao: lastSync });
+
+    if (produtos.length > 0) {
+      const insert = db.prepare(`
+        INSERT OR REPLACE INTO produtos
+          (id, ean, codigo_barras, descricao, codigo_interno, preco_varejo, preco_atacado, preco_original, ultima_alteracao)
+        VALUES
+          (@id, @ean, @codigo_barras, @descricao, @codigo_interno, @preco_varejo, @preco_atacado, @preco_original, @ultima_alteracao)
+      `);
+      const tx = db.transaction((items) => {
+        for (const p of items) {
+          insert.run({
+            id: p.id,
+            ean: p.ean,
+            codigo_barras: p.codigo_barras,
+            descricao: p.descricao,
+            codigo_interno: p.codigoInterno || "",
+            preco_varejo: p.precoVarejo || 0,
+            preco_atacado: p.precoAtacado || 0,
+            preco_original: p.precoOriginal || 0,
+            ultima_alteracao: p.ultimaAlteracao || null
+          });
+        }
+      });
+      tx(produtos);
+    }
+
+    db.prepare("INSERT OR REPLACE INTO sync_meta (chave, valor, atualizado_em) VALUES ('auto_sync_last', ?, CURRENT_TIMESTAMP)").run(now);
+    syncState = { running: false, lastRun: now, lastCount: produtos.length, error: null };
+  } catch (err) {
+    syncState = { running: false, lastRun: syncState.lastRun, lastCount: 0, error: err.message };
+  }
+
+  notifyWindows("erp:sync-status", syncState);
+}
+
+function startAutoSync(intervalMs = 3 * 60 * 1000) {
+  if (autoSyncTimer) clearInterval(autoSyncTimer);
+  setTimeout(() => runAutoSyncCycle(), 20 * 1000);
+  autoSyncTimer = setInterval(() => runAutoSyncCycle(), intervalMs);
+}
+
+ipcMain.handle("erp:sync-status", () => syncState);
+ipcMain.handle("erp:trigger-sync", () => { runAutoSyncCycle(); return true; });
+
 app.whenReady().then(() => {
   initDb();
   createWindow();
   setupAutoUpdater();
+  startAutoSync();
 });
 
 app.on("window-all-closed", () => {
