@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("easyPrint", {
   dbSetLastSync: (chave, valor) => ipcRenderer.invoke("db:set-last-sync", chave, valor),
   dbGetMaxId: () => ipcRenderer.invoke("db:get-max-id"),
   appCheckForUpdates: () => ipcRenderer.invoke("app:check-for-updates"),
+  erpUpdatePromo: (config, produtoId, lojaId, precoOferta) => ipcRenderer.invoke("erp:update-promo", config, produtoId, lojaId, precoOferta),
   erpSyncStatus: () => ipcRenderer.invoke("erp:sync-status"),
   erpTriggerSync: () => ipcRenderer.invoke("erp:trigger-sync"),
   onSyncUpdate: (cb) => ipcRenderer.on("erp:sync-status", (_e, data) => cb(data)),

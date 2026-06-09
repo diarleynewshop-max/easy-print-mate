@@ -14,6 +14,7 @@ import { LabelEditor } from "@/components/LabelEditor";
 import { ApiConfig } from "@/components/ApiConfig";
 import { Metrics } from "@/components/Metrics";
 import { A4Module } from "@/components/A4Module";
+import { PromoModule } from "@/components/PromoModule";
 import { useProductDiscovery } from "@/hooks/useProductDiscovery";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -40,10 +41,11 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
+  BadgePercent,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type View = "scan" | "editor" | "config" | "metrics" | "a4";
+type View = "scan" | "editor" | "config" | "metrics" | "a4" | "promo";
 
 const Index = () => {
   useProductDiscovery();
@@ -446,6 +448,7 @@ const Index = () => {
           <NavBtn icon={<Tag />} label="Bipar / Imprimir" active={view === "scan"} onClick={() => { setView("scan"); focusInput(); }} collapsed={sidebarCollapsed} />
           <NavBtn icon={<Pencil />} label="Editor de etiqueta" active={view === "editor"} onClick={() => setView("editor")} collapsed={sidebarCollapsed} />
           <NavBtn icon={<FileText />} label="Etiquetas A4 / PDF" active={view === "a4"} onClick={() => setView("a4")} collapsed={sidebarCollapsed} />
+          <NavBtn icon={<BadgePercent />} label="Item em Promoção" active={view === "promo"} onClick={() => setView("promo")} collapsed={sidebarCollapsed} />
           <NavBtn icon={<BarChart3 />} label="Metricas" active={view === "metrics"} onClick={() => setView("metrics")} collapsed={sidebarCollapsed} />
           <NavBtn icon={<Settings />} label="Configuracao API" active={view === "config"} onClick={() => setView("config")} collapsed={sidebarCollapsed} />
         </nav>
@@ -879,6 +882,12 @@ const Index = () => {
         {view === "a4" && (
           <div className="flex-1 overflow-hidden no-print">
             <A4Module config={config} />
+          </div>
+        )}
+
+        {view === "promo" && (
+          <div className="flex-1 flex flex-col overflow-hidden no-print">
+            <PromoModule config={config} />
           </div>
         )}
       </main>

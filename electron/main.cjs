@@ -4,7 +4,7 @@ const fsp = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const { consultarProduto, loadErpEnv, listarProdutosPaginado, sincronizarAlterados } = require("./varejo-facil.cjs");
+const { consultarProduto, loadErpEnv, listarProdutosPaginado, sincronizarAlterados, atualizarPrecoOferta } = require("./varejo-facil.cjs");
 const { autoUpdater } = require("electron-updater");
 const Database = require("better-sqlite3");
 
@@ -418,6 +418,15 @@ ipcMain.handle("erp:list-products", async (_event, config, pagina, quantidade, d
       message: err.message,
       status: err.status,
     }));
+  }
+});
+
+ipcMain.handle("erp:update-promo", async (_event, config, produtoId, lojaId, precoOferta) => {
+  try {
+    return await atualizarPrecoOferta({ ...config, produtoId: String(produtoId), precoOferta: Number(precoOferta) });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error("Erro desconhecido");
+    throw new Error(JSON.stringify({ message: err.message, debug: err.debug }));
   }
 });
 

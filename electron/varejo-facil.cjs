@@ -402,4 +402,75 @@ async function sincronizarAlterados({ empresa: empresaInput, companyName, baseUr
   return enriched;
 }
 
-module.exports = { consultarProduto, loadErpEnv, listarProdutosPaginado, sincronizarAlterados };
+async function mutateErpJson(baseUrl, token, requestPath, method, body, debug) {
+  let lastResult = null;
+  for (const candidate of getAuthorizationCandidates(token)) {
+    const response = await fetch(`${baseUrl}${requestPath}`, {
+      method,
+      headers: {
+        Authorization: candidate.value,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (response.status === 401) tokenCache.clear();
+
+    const text = await response.text();
+    const contentType = response.headers.get("content-type") || "";
+    let data = null;
+    if (contentType.includes("application/json") && text) {
+      try { data = JSON.parse(text); } catch { data = null; }
+    }
+
+    lastResult = { response, data, text };
+    debug?.push({ step: `${method}:${requestPath}`, status: response.status, ok: response.ok, authMode: candidate.mode });
+
+    if (response.status !== 401) return lastResult;
+  }
+  return lastResult;
+}
+
+async function atualizarPrecoOferta({ empresa: empresaInput, companyName, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword, loja, produtoId, precoOferta }) {
+  const empresa = normalizeEmpresa(companyName || empresaInput);
+  const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
+  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
+  const lojaId = lojaParam ? Number(lojaParam) : (ERP_LOJA_BY_EMPRESA[empresa] || 1);
+  const debug = [{ step: "entrada-update", message: `empresa=${empresa}; produtoId=${produtoId}; lojaId=${lojaId}; precoOferta=${precoOferta}` }];
+
+  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
+
+  // Busca o registro atual para montar o payload completo
+  const getResult = await fetchErpJson(baseUrl, token, `/v1/produto/produtos/${produtoId}/precos`, debug, `get-precos-update:${produtoId}`);
+  if (!getResult.response.ok) throw new Error(`Nao foi possivel obter precos do produto ${produtoId}: ${getResult.response.status}`);
+
+  const precos = getItems(getResult.data);
+  const selecionado = precos.find((p) => Number(p.lojaId) === lojaId) || precos[0];
+  if (!selecionado) throw new Error(`Nenhum registro de preco encontrado para produto ${produtoId}`);
+
+  const lojaIdUsada = selecionado.lojaId ?? lojaId;
+  const payload = { ...selecionado, precoOferta1: precoOferta, precoOferta: precoOferta };
+
+  // Tenta os endpoints mais prováveis do Varejo Facil
+  const endpoints = [
+    `/v1/produto/produtos/${produtoId}/precos/${lojaIdUsada}`,
+    `/v1/produto/precos/${lojaIdUsada}/${produtoId}`,
+    `/v1/produto/produtos/${produtoId}/precos`,
+  ];
+
+  for (const method of ["PUT", "PATCH"]) {
+    for (const endpoint of endpoints) {
+      const bodyToSend = method === "PATCH" ? { precoOferta1: precoOferta, precoOferta: precoOferta } : payload;
+      const result = await mutateErpJson(baseUrl, token, endpoint, method, bodyToSend, debug);
+      if (result.response.ok) {
+        return { success: true, endpoint, lojaId: lojaIdUsada, precoOferta, debug };
+      }
+    }
+  }
+
+  const err = new Error("Nao foi possivel atualizar o preco de oferta no ERP. Verifique permissoes da API.");
+  err.debug = debug;
+  throw err;
+}
+
+module.exports = { consultarProduto, loadErpEnv, listarProdutosPaginado, sincronizarAlterados, atualizarPrecoOferta };

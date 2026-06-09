@@ -32,6 +32,7 @@ export interface EasyPrintBridge {
   dbSetLastSync: (chave: string, valor: string) => Promise<boolean>;
   dbGetMaxId: () => Promise<number>;
   appCheckForUpdates: () => Promise<{ success: boolean; updateInfo?: any; message?: string }>;
+  erpUpdatePromo: (config: VFConfig, produtoId: string, lojaId: number | null, precoOferta: number) => Promise<{ success: boolean; endpoint: string; lojaId: number; precoOferta: number; debug: any }>;
   erpSyncStatus: () => Promise<ErpSyncState>;
   erpTriggerSync: () => Promise<boolean>;
   onSyncUpdate: (cb: (data: ErpSyncState) => void) => void;
