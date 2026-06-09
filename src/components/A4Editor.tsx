@@ -552,8 +552,14 @@ function ElementProps({
 
       {element.type === "text" && (
         <div>
-          <Label className="text-xs">Texto fixo</Label>
-          <Input value={element.text || ""} onChange={(e) => onChange({ text: e.target.value })} className="h-8" />
+          <Label className="text-xs">Texto livre</Label>
+          <textarea
+            value={element.text || ""}
+            onChange={(e) => onChange({ text: e.target.value })}
+            rows={3}
+            className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder="Digite o texto do cartaz..."
+          />
         </div>
       )}
 

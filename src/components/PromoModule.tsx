@@ -13,11 +13,12 @@ import {
   Percent,
   DollarSign,
   Trash2,
-  Printer,
   Download,
+  Printer,
   Lock,
   CheckCircle2,
   AlertTriangle,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +28,7 @@ interface Props {
 
 type RoundMode = "up" | "down" | "half";
 type DiscountType = "percent" | "value";
+type FillMode = "repeat" | "sequential";
 
 interface PromoItem {
   id: string;
@@ -44,7 +46,7 @@ const AUTH_SENHA = "ADMIN";
 function applyRounding(price: number, mode: RoundMode): number {
   if (mode === "up") return Math.ceil(price);
   if (mode === "down") return Math.floor(price);
-  return Math.round(price * 2) / 2; // nearest 0.50
+  return Math.round(price * 2) / 2;
 }
 
 function calcPromoPrice(basePrice: number, discountType: DiscountType, discountValue: number, roundMode: RoundMode): number {
@@ -61,6 +63,42 @@ function fmtBRL(v?: number) {
   if (v == null || isNaN(v)) return "—";
   return `R$ ${v.toFixed(2).replace(".", ",")}`;
 }
+
+function buildPromoProduct(product: Product, precoOriginal: number, precoOferta: number, descricao?: string): Product {
+  return { ...product, precoOriginal, precoVarejo: precoOferta, descricao: descricao ?? product.descricao };
+}
+
+async function doPrintA4(products: Product[], templateId: string, fillMode: FillMode, config: VFConfig) {
+  const templates = a4Storage.getTemplates();
+  const template = templates.find((t) => t.id === templateId) || templates[0];
+  if (!template) { toast.error("Nenhum modelo A4 configurado"); return; }
+
+  const blocksPerPage = template.rows * template.cols;
+  let toRender: Product[];
+
+  if (fillMode === "repeat" && products.length > 0) {
+    toRender = Array.from({ length: blocksPerPage }, (_, i) =>
+      products[i % products.length]
+    );
+  } else {
+    toRender = products;
+  }
+
+  const printerName = config.a4PrinterName || "";
+  try {
+    if (printerName && window.easyPrint?.isDesktop) {
+      await printA4Pdf(template, toRender, printerName);
+      toast.success(`Impresso em ${printerName}`);
+    } else {
+      downloadA4Pdf(template, toRender, "promo-a4.pdf");
+      toast.success("PDF salvo");
+    }
+  } catch (e) {
+    toast.error("Erro ao gerar PDF: " + (e instanceof Error ? e.message : String(e)));
+  }
+}
+
+// ---- Auth Gate ----
 
 function AuthGate({ onAuth }: { onAuth: () => void }) {
   const [login, setLogin] = useState("");
@@ -87,7 +125,6 @@ function AuthGate({ onAuth }: { onAuth: () => void }) {
             Cadastro de preço de oferta requer autenticação
           </p>
         </div>
-
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Login</label>
@@ -120,6 +157,61 @@ function AuthGate({ onAuth }: { onAuth: () => void }) {
     </div>
   );
 }
+
+// ---- Print Options Bar ----
+
+function PrintOptionsBar({
+  templateId, setTemplateId, fillMode, setFillMode,
+}: {
+  templateId: string;
+  setTemplateId: (id: string) => void;
+  fillMode: FillMode;
+  setFillMode: (m: FillMode) => void;
+}) {
+  const templates = a4Storage.getTemplates();
+  const active = templates.find((t) => t.id === templateId) || templates[0];
+  const blocksPerPage = active ? active.rows * active.cols : 1;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-4 py-2 text-xs">
+      <span className="font-medium text-muted-foreground uppercase tracking-wide">Modelo A4:</span>
+      <div className="relative">
+        <select
+          className="h-8 rounded border bg-background px-2 pr-7 text-xs appearance-none cursor-pointer"
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+        >
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>{t.name} ({t.rows}×{t.cols})</option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+      </div>
+
+      {blocksPerPage > 1 && (
+        <>
+          <span className="font-medium text-muted-foreground uppercase tracking-wide ml-2">Preencher {blocksPerPage} espaços:</span>
+          <div className="flex rounded border overflow-hidden">
+            <button
+              onClick={() => setFillMode("repeat")}
+              className={cn("px-3 py-1.5 text-xs font-medium transition-colors", fillMode === "repeat" ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+            >
+              Repetir produto
+            </button>
+            <button
+              onClick={() => setFillMode("sequential")}
+              className={cn("px-3 py-1.5 text-xs font-medium transition-colors", fillMode === "sequential" ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+            >
+              1 cartaz/produto
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---- Shared subcomponents ----
 
 function RoundPicker({ value, onChange }: { value: RoundMode; onChange: (v: RoundMode) => void }) {
   const opts: { v: RoundMode; label: string }[] = [
@@ -183,7 +275,7 @@ function DiscountInput({
 function PromoPreview({ original, promo }: { original: number; promo: number }) {
   return (
     <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 text-center space-y-1">
-      <p className="text-xs text-muted-foreground uppercase tracking-wide">Catálogo A4</p>
+      <p className="text-xs text-muted-foreground uppercase tracking-wide">Prévia do cartaz</p>
       <p className="text-sm text-muted-foreground line-through">{fmtBRL(original)}</p>
       <p className="text-3xl font-black text-primary">{fmtBRL(promo)}</p>
       <p className="text-xs text-muted-foreground">
@@ -194,40 +286,19 @@ function PromoPreview({ original, promo }: { original: number; promo: number }) 
   );
 }
 
-async function updateErpAndGetProduct(config: VFConfig, item: PromoItem): Promise<void> {
-  if (!window.easyPrint?.isDesktop) return;
-  await window.easyPrint.erpUpdatePromo(config, item.product.id as string, null, item.precoOferta);
-}
-
-function buildPromoProduct(product: Product, precoOriginal: number, precoOferta: number): Product {
-  return { ...product, precoOriginal, precoVarejo: precoOferta };
-}
-
-async function printPromoA4(products: Product[], config: VFConfig) {
-  const templates = a4Storage.getTemplates();
-  const activeId = a4Storage.getActive();
-  const template = templates.find((t) => t.id === activeId) || templates[0];
-  if (!template) { toast.error("Nenhum modelo A4 configurado"); return; }
-  const blocks = products.map((p) => ({ product: p }));
-  const printerName = config.a4PrinterName || "";
-  if (printerName && window.easyPrint?.isDesktop) {
-    await printA4Pdf(template, blocks, printerName);
-  } else {
-    downloadA4Pdf(template, blocks);
-  }
-}
-
 // ---- Individual Tab ----
 
-function IndividualTab({ config }: { config: VFConfig }) {
+function IndividualTab({ config, templateId, fillMode }: { config: VFConfig; templateId: string; fillMode: FillMode }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [product, setProduct] = useState<Product | null>(null);
+  const [editedDesc, setEditedDesc] = useState("");
   const [discountType, setDiscountType] = useState<DiscountType>("percent");
   const [discountValue, setDiscountValue] = useState("20");
   const [roundMode, setRoundMode] = useState<RoundMode>("half");
   const [updating, setUpdating] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const precoBase = product?.precoVarejo ?? 0;
   const discNum = parseFloat(discountValue.replace(",", ".")) || 0;
@@ -244,6 +315,7 @@ function IndividualTab({ config }: { config: VFConfig }) {
     try {
       const p = await fetchProductByEan(config, q);
       setProduct(p);
+      setEditedDesc(p.descricao || "");
     } catch (e) {
       toast.error(e instanceof VFError ? e.message : "Produto não encontrado");
     } finally {
@@ -255,14 +327,11 @@ function IndividualTab({ config }: { config: VFConfig }) {
   const handleUpdate = async () => {
     if (!product || promoPrice <= 0) return;
     setUpdating(true);
-    const promoProduct = buildPromoProduct(product, precoBase, promoPrice);
     try {
       if (window.easyPrint?.isDesktop) {
         await window.easyPrint.erpUpdatePromo(config, product.id as string, null, promoPrice);
-        toast.success(`Preço de oferta atualizado no ERP: ${fmtBRL(promoPrice)}`);
-        if (window.easyPrint) {
-          await window.easyPrint.dbSyncProducts([promoProduct]);
-        }
+        toast.success(`Preço de oferta atualizado: ${fmtBRL(promoPrice)}`);
+        await window.easyPrint.dbSyncProducts([buildPromoProduct(product, precoBase, promoPrice, editedDesc)]);
       } else {
         toast.info("ERP não disponível no modo browser");
       }
@@ -276,7 +345,9 @@ function IndividualTab({ config }: { config: VFConfig }) {
 
   const handlePrintA4 = async () => {
     if (!product || promoPrice <= 0) return;
-    await printPromoA4([buildPromoProduct(product, precoBase, promoPrice)], config);
+    setPrinting(true);
+    await doPrintA4([buildPromoProduct(product, precoBase, promoPrice, editedDesc)], templateId, fillMode, config);
+    setPrinting(false);
   };
 
   return (
@@ -298,11 +369,19 @@ function IndividualTab({ config }: { config: VFConfig }) {
 
       {product && (
         <>
-          <div className="rounded-lg border bg-card p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0">
+          <div className="rounded-lg border bg-card p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0 space-y-1.5">
                 <p className="text-xs font-mono text-muted-foreground">{product.ean}</p>
-                <p className="font-semibold truncate">{product.descricao}</p>
+                <div>
+                  <label className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Descrição no cartaz</label>
+                  <Input
+                    value={editedDesc}
+                    onChange={(e) => setEditedDesc(e.target.value)}
+                    className="h-8 text-sm font-medium mt-0.5"
+                    placeholder="Edite a descrição para o cartaz..."
+                  />
+                </div>
               </div>
               <div className="shrink-0 text-right">
                 <p className="text-xs text-muted-foreground">Preço de venda</p>
@@ -329,16 +408,13 @@ function IndividualTab({ config }: { config: VFConfig }) {
             <>
               <PromoPreview original={precoBase} promo={promoPrice} />
               <div className="flex gap-2">
-                <Button
-                  onClick={handleUpdate}
-                  disabled={updating}
-                  className="flex-1"
-                >
+                <Button onClick={handleUpdate} disabled={updating} className="flex-1">
                   {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   Atualizar ERP
                 </Button>
-                <Button onClick={handlePrintA4} variant="secondary" className="flex-1">
-                  <Download className="h-4 w-4" /> Catálogo A4
+                <Button onClick={handlePrintA4} disabled={printing} variant="secondary" className="flex-1">
+                  {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  Catálogo A4
                 </Button>
               </div>
             </>
@@ -351,7 +427,7 @@ function IndividualTab({ config }: { config: VFConfig }) {
 
 // ---- Lote Tab ----
 
-function LoteTab({ config }: { config: VFConfig }) {
+function LoteTab({ config, templateId, fillMode }: { config: VFConfig; templateId: string; fillMode: FillMode }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -360,6 +436,7 @@ function LoteTab({ config }: { config: VFConfig }) {
   const [roundMode, setRoundMode] = useState<RoundMode>("half");
   const [items, setItems] = useState<PromoItem[]>([]);
   const [updatingAll, setUpdatingAll] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const discNum = parseFloat(discountValue.replace(",", ".")) || 0;
 
@@ -430,8 +507,12 @@ function LoteTab({ config }: { config: VFConfig }) {
 
   const handlePrintAllA4 = async () => {
     if (!computedItems.length) return;
-    const promoProducts = computedItems.map((item) => buildPromoProduct(item.product, item.precoOriginal, item.precoOferta));
-    await printPromoA4(promoProducts, config);
+    setPrinting(true);
+    const promoProducts = computedItems.map((item) =>
+      buildPromoProduct(item.product, item.precoOriginal, item.precoOferta)
+    );
+    await doPrintA4(promoProducts, templateId, fillMode, config);
+    setPrinting(false);
   };
 
   return (
@@ -496,8 +577,9 @@ function LoteTab({ config }: { config: VFConfig }) {
               {updatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
               Atualizar {computedItems.length} no ERP
             </Button>
-            <Button onClick={handlePrintAllA4} variant="secondary" className="flex-1">
-              <Download className="h-4 w-4" /> Catálogo em Lote
+            <Button onClick={handlePrintAllA4} disabled={printing} variant="secondary" className="flex-1">
+              {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Catálogo em Lote
             </Button>
           </div>
 
@@ -520,11 +602,13 @@ function LoteTab({ config }: { config: VFConfig }) {
 
 export function PromoModule({ config }: Props) {
   const [authOk, setAuthOk] = useState(false);
+  const [templateId, setTemplateId] = useState<string>(() => a4Storage.getActive() || a4Storage.getTemplates()[0]?.id || "");
+  const [fillMode, setFillMode] = useState<FillMode>("repeat");
 
   if (!authOk) return <AuthGate onAuth={() => setAuthOk(true)} />;
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 flex flex-col overflow-hidden">
       <div className="border-b bg-card px-4 py-3 flex items-center gap-3">
         <Tag className="h-5 w-5 text-primary" />
         <div>
@@ -533,20 +617,29 @@ export function PromoModule({ config }: Props) {
         </div>
       </div>
 
-      <Tabs defaultValue="individual" className="flex-1">
-        <div className="px-4 pt-3">
-          <TabsList className="grid grid-cols-2 w-full max-w-xs">
-            <TabsTrigger value="individual">Individual</TabsTrigger>
-            <TabsTrigger value="lote">Em Lote</TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="individual">
-          <IndividualTab config={config} />
-        </TabsContent>
-        <TabsContent value="lote">
-          <LoteTab config={config} />
-        </TabsContent>
-      </Tabs>
+      <PrintOptionsBar
+        templateId={templateId}
+        setTemplateId={setTemplateId}
+        fillMode={fillMode}
+        setFillMode={setFillMode}
+      />
+
+      <div className="flex-1 overflow-auto">
+        <Tabs defaultValue="individual" className="flex-1">
+          <div className="px-4 pt-3">
+            <TabsList className="grid grid-cols-2 w-full max-w-xs">
+              <TabsTrigger value="individual">Individual</TabsTrigger>
+              <TabsTrigger value="lote">Em Lote</TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent value="individual">
+            <IndividualTab config={config} templateId={templateId} fillMode={fillMode} />
+          </TabsContent>
+          <TabsContent value="lote">
+            <LoteTab config={config} templateId={templateId} fillMode={fillMode} />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
