@@ -110,34 +110,54 @@ function pickBarcodeFormat(value: string, requested?: A4Element["barcodeFormat"]
   return value.length === 13 && /^\d+$/.test(value) ? "EAN13" : "CODE128";
 }
 
-function applyFont(doc: jsPDF, el: A4Element, scale = 1) {
-  const family = el.fontFamily || "helvetica";
-  const style = el.bold && el.italic ? "bolditalic" : el.bold ? "bold" : el.italic ? "italic" : "normal";
-  
-  // Adiciona fontes ao VFS se não estiverem presentes
-  Object.entries(FONTS_VFS).forEach(([filename, base64]) => {
-    if (!doc.existsFileInVFS(filename)) {
-      doc.addFileToVFS(filename, base64);
-    }
-  });
+// Fontes nativas do jsPDF (não precisam de arquivo externo)
+const JSPDF_NATIVE_FONTS = new Set(["helvetica", "courier", "times", "symbol", "zapfdingbats"]);
 
-  // Mapeamento de fontes customizadas
-  if (family === "Anton") {
-    doc.addFont("Anton-Regular.ttf", "Anton", "normal");
-    doc.setFont("Anton", "normal");
-  } else if (family === "Roboto") {
-    doc.addFont("Roboto-Bold.ttf", "Roboto", "bold");
-    doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
-    doc.setFont("Roboto", style.includes("bold") ? "bold" : "normal");
-  } else if (family === "OpenSans") {
-    doc.addFont("OpenSans-Bold.ttf", "OpenSans", "bold");
-    doc.addFont("OpenSans-Regular.ttf", "OpenSans", "normal");
-    doc.setFont("OpenSans", style.includes("bold") ? "bold" : "normal");
-  } else if (family === "BebasNeue") {
-    doc.addFont("BebasNeue-Regular.ttf", "BebasNeue", "normal");
-    doc.setFont("BebasNeue", "normal");
+function applyFont(doc: jsPDF, el: A4Element, scale = 1) {
+  const rawFamily = (el.fontFamily || "helvetica").toLowerCase();
+  const style = el.bold && el.italic ? "bolditalic" : el.bold ? "bold" : el.italic ? "italic" : "normal";
+
+  // Usa fonte nativa se disponível; senão tenta custom com fallback para helvetica
+  if (JSPDF_NATIVE_FONTS.has(rawFamily)) {
+    try {
+      doc.setFont(rawFamily, style);
+    } catch {
+      doc.setFont("helvetica", "normal");
+    }
   } else {
-    doc.setFont(family, style);
+    // Tenta registrar e usar fonte customizada — só se houver dado VFS real (não placeholder)
+    const customFonts: Record<string, { file: string; variant: string }[]> = {
+      anton:    [{ file: "Anton-Regular.ttf", variant: "normal" }],
+      roboto:   [{ file: "Roboto-Regular.ttf", variant: "normal" }, { file: "Roboto-Bold.ttf", variant: "bold" }],
+      opensans: [{ file: "OpenSans-Regular.ttf", variant: "normal" }, { file: "OpenSans-Bold.ttf", variant: "bold" }],
+      bebasneue:[{ file: "BebasNeue-Regular.ttf", variant: "normal" }],
+    };
+
+    const key = Object.keys(customFonts).find((k) => rawFamily.replace(/\s/g, "").toLowerCase().startsWith(k));
+    let applied = false;
+
+    if (key) {
+      try {
+        for (const { file, variant } of customFonts[key]) {
+          const b64 = FONTS_VFS[file];
+          // Só adiciona se o dado parecer um base64 real (>200 chars, sem '.')
+          if (b64 && b64.length > 200 && !b64.includes(".")) {
+            if (!doc.existsFileInVFS(file)) doc.addFileToVFS(file, b64);
+            doc.addFont(file, key, variant);
+          }
+        }
+        const wantBold = style.includes("bold");
+        doc.setFont(key, customFonts[key].some((f) => f.variant === "bold") && wantBold ? "bold" : "normal");
+        applied = true;
+      } catch {
+        applied = false;
+      }
+    }
+
+    if (!applied) {
+      // Fallback seguro para helvetica
+      doc.setFont("helvetica", style === "bolditalic" || style === "bold" ? "bold" : "normal");
+    }
   }
 
   doc.setFontSize(el.fontSize * scale);
