@@ -38,6 +38,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileText,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -73,6 +75,7 @@ const Index = () => {
     return storage.getActiveTemplateId() || ELGIN_PRESET_ID;
   });
   const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const activeTemplate = useMemo(
     () => templates.find((t) => t.id === activeTemplateId) || templates[0],
@@ -415,79 +418,94 @@ const Index = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      <aside className="no-print w-60 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
-        <div className="p-4 border-b border-sidebar-border flex items-center gap-2">
-          <Tag className="h-5 w-5 text-sidebar-primary" />
-          <div>
-            <h1 className="font-bold leading-tight text-sm">Easy Print Mate</h1>
-            <p className="text-[11px] opacity-70">Elgin L42PRO - EPL RAW</p>
-          </div>
+      <aside className={cn(
+        "no-print flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-200 shrink-0 overflow-hidden",
+        sidebarCollapsed ? "w-12" : "w-60"
+      )}>
+        <div className="flex shrink-0 items-center justify-between border-b border-sidebar-border px-3 py-3">
+          {!sidebarCollapsed && (
+            <div className="flex items-center gap-2 min-w-0">
+              <Tag className="h-4 w-4 text-sidebar-primary shrink-0" />
+              <div className="min-w-0">
+                <h1 className="font-bold leading-tight text-sm truncate">Easy Print Mate</h1>
+                <p className="text-[10px] opacity-60">Elgin L42PRO</p>
+              </div>
+            </div>
+          )}
+          {sidebarCollapsed && <Tag className="h-4 w-4 text-sidebar-primary mx-auto" />}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="shrink-0 rounded-md p-1 hover:bg-sidebar-accent transition-colors"
+            title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+          >
+            {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
         </div>
 
         <nav className="p-2 space-y-1">
-          <NavBtn icon={<Tag />} label="Bipar / Imprimir" active={view === "scan"} onClick={() => { setView("scan"); focusInput(); }} />
-          <NavBtn icon={<Pencil />} label="Editor de etiqueta" active={view === "editor"} onClick={() => setView("editor")} />
-          <NavBtn icon={<FileText />} label="Etiquetas A4 / PDF" active={view === "a4"} onClick={() => setView("a4")} />
-          <NavBtn icon={<BarChart3 />} label="Metricas" active={view === "metrics"} onClick={() => setView("metrics")} />
-          <NavBtn icon={<Settings />} label="Configuracao API" active={view === "config"} onClick={() => setView("config")} />
+          <NavBtn icon={<Tag />} label="Bipar / Imprimir" active={view === "scan"} onClick={() => { setView("scan"); focusInput(); }} collapsed={sidebarCollapsed} />
+          <NavBtn icon={<Pencil />} label="Editor de etiqueta" active={view === "editor"} onClick={() => setView("editor")} collapsed={sidebarCollapsed} />
+          <NavBtn icon={<FileText />} label="Etiquetas A4 / PDF" active={view === "a4"} onClick={() => setView("a4")} collapsed={sidebarCollapsed} />
+          <NavBtn icon={<BarChart3 />} label="Metricas" active={view === "metrics"} onClick={() => setView("metrics")} collapsed={sidebarCollapsed} />
+          <NavBtn icon={<Settings />} label="Configuracao API" active={view === "config"} onClick={() => setView("config")} collapsed={sidebarCollapsed} />
         </nav>
 
-        <div className="px-3 mt-2 flex items-center justify-between text-[10px] uppercase opacity-60">
-          <span className="flex items-center gap-1"><History className="h-3 w-3" /> Historico</span>
-          {history.length > 0 && (
-            <button className="hover:text-sidebar-primary" onClick={() => { storage.clearHistory(); setHistory([]); }}>
-              <Trash2 className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-        <div className="flex-1 overflow-auto px-2 py-2 space-y-1">
-          {history.length === 0 && <p className="text-[11px] opacity-50 px-2">Nenhum produto ainda.</p>}
-          {history.map((h) => (
-            <button
-              key={h.ean + h.at}
-              onClick={() => reuseFromHistory(h.ean)}
-              className="w-full text-left p-2 rounded hover:bg-sidebar-accent transition-colors"
-            >
-              <div className="text-[10px] font-mono opacity-70">{h.ean}</div>
-              <div className="text-xs truncate">{h.descricao}</div>
-            </button>
-          ))}
-        </div>
+        {!sidebarCollapsed && (
+          <>
+            <div className="px-3 mt-2 flex items-center justify-between text-[10px] uppercase opacity-60">
+              <span className="flex items-center gap-1"><History className="h-3 w-3" /> Historico</span>
+              {history.length > 0 && (
+                <button className="hover:text-sidebar-primary" onClick={() => { storage.clearHistory(); setHistory([]); }}>
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-auto px-2 py-2 space-y-1">
+              {history.length === 0 && <p className="text-[11px] opacity-50 px-2">Nenhum produto ainda.</p>}
+              {history.map((h) => (
+                <button
+                  key={h.ean + h.at}
+                  onClick={() => reuseFromHistory(h.ean)}
+                  className="w-full text-left p-2 rounded hover:bg-sidebar-accent transition-colors"
+                >
+                  <div className="text-[10px] font-mono opacity-70">{h.ean}</div>
+                  <div className="text-xs truncate">{h.descricao}</div>
+                </button>
+              ))}
+            </div>
 
-        <div className="p-3 border-t border-sidebar-border text-[11px] opacity-80 space-y-2">
-          <div className="opacity-70">Modelo ativo:</div>
-          <select
-            className="w-full bg-sidebar-accent text-sidebar-accent-foreground rounded px-2 py-1 text-xs"
-            value={activeTemplateId}
-            onChange={(e) => { setActiveTemplateId(e.target.value); storage.setActiveTemplateId(e.target.value); }}
-          >
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-          <Button size="sm" variant="outline" className="h-7 w-full text-[11px]" onClick={handleRestoreElgin}>
-            <RotateCw className="h-3 w-3" /> Restaurar Elgin
-          </Button>
-        </div>
+            <div className="p-3 border-t border-sidebar-border text-[11px] opacity-80 space-y-2 shrink-0">
+              <div className="opacity-70">Modelo ativo:</div>
+              <select
+                className="w-full bg-sidebar-accent text-sidebar-accent-foreground rounded px-2 py-1 text-xs"
+                value={activeTemplateId}
+                onChange={(e) => { setActiveTemplateId(e.target.value); storage.setActiveTemplateId(e.target.value); }}
+              >
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <Button size="sm" variant="outline" className="h-7 w-full text-[11px]" onClick={handleRestoreElgin}>
+                <RotateCw className="h-3 w-3" /> Restaurar Elgin
+              </Button>
+            </div>
+          </>
+        )}
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Top status bar */}
-        <div className="no-print flex shrink-0 items-center gap-3 border-b bg-card px-4 py-2 text-xs">
+        <div className="no-print flex shrink-0 flex-wrap items-center gap-2 border-b bg-card px-3 py-1.5 text-xs">
           <StatusBadge
             online={printerStatus === "online"}
             checking={printerStatus === "checking"}
-            label={printerStatus === "online" ? "Servidor de impressao online" : printerStatus === "checking" ? "Verificando servidor..." : "Servidor offline"}
+            label={printerStatus === "online" ? "Online" : printerStatus === "checking" ? "Verificando..." : "Offline"}
             iconOk={<Wifi className="h-3.5 w-3.5" />}
             iconFail={<WifiOff className="h-3.5 w-3.5" />}
           />
-          <div className="flex items-center gap-1.5 rounded-md border bg-background px-2 py-1">
-            <Printer className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="font-mono">{config.labelPrinterName || "Selecione a impressora"}</span>
-          </div>
-          {window.easyPrint?.isDesktop && (
+          {window.easyPrint?.isDesktop ? (
             <select
-              className="h-8 rounded-md border bg-background px-2 py-1 text-xs"
+              className="h-7 rounded-md border bg-background px-2 py-0.5 text-xs"
               value={config.labelPrinterName || ""}
               onChange={(e) => {
                 const next = { ...config, labelPrinterName: e.target.value };
@@ -502,22 +520,27 @@ const Index = () => {
                 </option>
               ))}
             </select>
+          ) : (
+            <div className="flex items-center gap-1 rounded-md border bg-background px-2 py-0.5">
+              <Printer className="h-3 w-3 text-muted-foreground" />
+              <span className="font-mono">{config.labelPrinterName || "Sem impressora"}</span>
+            </div>
           )}
-          <div className="flex items-center gap-1.5 rounded-md border bg-background px-2 py-1">
-            <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+          <div className="flex items-center gap-1 rounded-md border bg-background px-2 py-0.5">
+            <Tag className="h-3 w-3 text-muted-foreground" />
             <span>{activeTemplate.name}</span>
-            <span className="text-muted-foreground">- {activeTemplate.widthMm}x{activeTemplate.heightMm}mm</span>
+            <span className="text-muted-foreground">· {activeTemplate.widthMm}x{activeTemplate.heightMm}mm</span>
           </div>
           {lastEvent && (
-            <div className="ml-auto flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-muted-foreground">
+            <div className="ml-auto flex items-center gap-1 rounded-md border bg-background px-2 py-0.5 text-muted-foreground">
               Ultima: <span className="font-mono text-foreground">{lastEvent.ean}</span>
-              - {lastEvent.quantidade}x - {new Date(lastEvent.at).toLocaleTimeString()}
+              · {lastEvent.quantidade}x · {new Date(lastEvent.at).toLocaleTimeString()}
             </div>
           )}
         </div>
 
         {view === "scan" && (
-          <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4 p-4 overflow-auto no-print">
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 p-4 overflow-auto no-print">
             <section className="space-y-4">
               <div className="flex items-center gap-2">
                 <div className="flex-1">
@@ -863,17 +886,19 @@ const Index = () => {
   );
 };
 
-function NavBtn({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick: () => void }) {
+function NavBtn({ icon, label, active, onClick, collapsed = false }: { icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; collapsed?: boolean }) {
   return (
     <button
       onClick={onClick}
+      title={collapsed ? label : undefined}
       className={cn(
-        "w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+        "w-full flex items-center rounded-md text-sm transition-colors",
+        collapsed ? "justify-center px-2 py-2" : "gap-2 px-3 py-2",
         active ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
       )}
     >
-      <span className="[&_svg]:h-4 [&_svg]:w-4">{icon}</span>
-      {label}
+      <span className="[&_svg]:h-4 [&_svg]:w-4 shrink-0">{icon}</span>
+      {!collapsed && label}
     </button>
   );
 }

@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import {
   Barcode,
   Bold,
+  ChevronLeft,
+  ChevronRight,
   Columns3,
   DollarSign,
   Download,
@@ -301,9 +303,27 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
   const [currentId, setCurrentId] = useState(activeId);
   const [selectedField, setSelectedField] = useState<LabelFieldKey | null>("barcode");
   const [zoom, setZoom] = useState(1.4);
+  const [layersCollapsed, setLayersCollapsed] = useState(false);
   const [previewMode, setPreviewMode] = useState<"single" | "sheet">("single");
   const [sheetRows, setSheetRows] = useState<number>(2);
   const [rightPanel, setRightPanel] = useState<"field" | "template">("field");
+  const canvasAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = canvasAreaRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((z) => {
+        const next = z + (e.deltaY < 0 ? 0.1 : -0.1);
+        return Math.min(3, Math.max(0.5, Math.round(next * 10) / 10));
+      });
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
+
   const current = local.find((t) => t.id === currentId) || local[0];
   const selected = current.fields.find((field) => field.key === selectedField) || current.fields.find((field) => field.visible) || current.fields[0];
   const SelectedIcon = selected ? FIELD_ICONS[selected.key] : MousePointer2;
@@ -502,14 +522,48 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(360px,1fr)_320px]">
+      <div className={cn(
+        "grid min-h-0 flex-1",
+        layersCollapsed
+          ? "grid-cols-[40px_minmax(360px,1fr)_320px]"
+          : "grid-cols-[260px_minmax(360px,1fr)_320px]"
+      )}>
         {/* LEFT PANEL: layers */}
         <aside className="flex min-h-0 flex-col border-r bg-card/70">
+          {layersCollapsed ? (
+            <div className="flex flex-col items-center gap-2 py-2 px-1">
+              <button
+                type="button"
+                title="Mostrar Camadas"
+                onClick={() => setLayersCollapsed(false)}
+                className="rounded-md p-1.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              >
+                <Layers3 className="h-4 w-4 text-primary" />
+              </button>
+              <button
+                type="button"
+                title="Expandir painel"
+                onClick={() => setLayersCollapsed(false)}
+                className="rounded-md p-1 hover:bg-muted transition-colors text-muted-foreground"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <>
           <div className="flex items-center justify-between border-b px-3 py-2">
             <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               <Layers3 className="h-3.5 w-3.5 text-primary" />
               Camadas
             </span>
+            <button
+              type="button"
+              title="Recolher painel"
+              onClick={() => setLayersCollapsed(true)}
+              className="rounded-md p-1 hover:bg-muted transition-colors text-muted-foreground"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
           </div>
 
           <div className="flex-1 overflow-auto p-2">
@@ -577,6 +631,8 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
               </Button>
             </label>
           </div>
+            </>
+          )}
         </aside>
 
         {/* CANVAS */}
@@ -646,6 +702,7 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
 
           {/* Canvas area with checkerboard */}
           <div
+            ref={canvasAreaRef}
             className="min-h-0 flex-1 overflow-auto"
             style={{
               backgroundImage:

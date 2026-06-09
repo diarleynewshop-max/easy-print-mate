@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { A4Editor } from "@/components/A4Editor";
+import { A4NewTemplateWizard } from "@/components/A4NewTemplateWizard";
 import { toast } from "sonner";
 import {
   FileText,
@@ -37,12 +38,20 @@ export function A4Module({ config }: Props) {
   const [activeId, setActiveId] = useState<string>(() => a4Storage.getActive() || templates[0]?.id || "");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
-  
+
   // Fila de produtos para preenchimento sequencial
   const [productQueue, setProductQueue] = useState<Product[]>([]);
   const [repeatMode, setRepeatMode] = useState(false);
   const [zoom, setZoom] = useState(1.4);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Edição inline de preços
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editDe, setEditDe] = useState("");
+  const [editPor, setEditPor] = useState("");
+
+  // Wizard de novo modelo
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const active = templates.find((t) => t.id === activeId) || templates[0];
 
@@ -73,9 +82,11 @@ export function A4Module({ config }: Props) {
     persist(templates.map((x) => (x.id === t.id ? t : x)));
   };
 
-  const handleNew = () => {
-    const t = newA4Template(2, 2);
+  const handleNew = () => setWizardOpen(true);
+
+  const handleWizardConfirm = (t: A4Template) => {
     persist([...templates, t], t.id);
+    setWizardOpen(false);
     setTab("editor");
   };
 
@@ -125,45 +136,81 @@ export function A4Module({ config }: Props) {
     setProductQueue(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleDownload = () => {
-    if (!active || productQueue.length === 0) return toast.error("Bipe pelo menos um produto");
-    const fullProducts = repeatMode 
-      ? Array.from({ length: blocksPerPage }, () => productQueue[0])
-      : productQueue;
-    
-    downloadA4Pdf(active, fullProducts, `${active.name.replace(/\s+/g, "_")}.pdf`);
-    toast.success("PDF gerado");
+  const startEdit = (index: number) => {
+    const p = productQueue[index];
+    setEditDe(p.precoOriginal != null ? p.precoOriginal.toFixed(2).replace(".", ",") : "");
+    setEditPor(p.precoVarejo != null ? p.precoVarejo.toFixed(2).replace(".", ",") : "");
+    setEditingIndex(index);
   };
 
-  const handlePrint = () => {
+  const confirmEdit = () => {
+    if (editingIndex === null) return;
+    const parseBRL = (v: string) => {
+      const n = parseFloat(v.replace(",", "."));
+      return isNaN(n) ? undefined : n;
+    };
+    setProductQueue(prev =>
+      prev.map((p, i) =>
+        i === editingIndex
+          ? { ...p, precoOriginal: parseBRL(editDe), precoVarejo: parseBRL(editPor) }
+          : p
+      )
+    );
+    setEditingIndex(null);
+  };
+
+  const handleDownload = async () => {
+    if (!active || productQueue.length === 0) return toast.error("Bipe pelo menos um produto");
+    try {
+      const fullProducts = repeatMode
+        ? Array.from({ length: blocksPerPage }, () => productQueue[0])
+        : productQueue;
+      downloadA4Pdf(active, fullProducts, `${active.name.replace(/\s+/g, "_")}.pdf`);
+      toast.success("PDF gerado com sucesso");
+    } catch (e) {
+      toast.error("Erro ao gerar PDF: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
+  const handlePrint = async () => {
     if (!active || productQueue.length === 0) return toast.error("Bipe pelo menos um produto");
     const currentConfig = storage.getConfig();
     const usuario = requestPrintUserName();
-    
-    const fullProducts = repeatMode 
+
+    const fullProducts = repeatMode
       ? Array.from({ length: blocksPerPage }, () => productQueue[0])
       : productQueue;
 
-    printA4Pdf(active, fullProducts, currentConfig.a4PrinterName);
-    
-    productQueue.forEach((product) => {
-      storage.pushPrintEvent({
-        ean: product.ean,
-        descricao: product.descricao,
-        quantidade: 1,
-        templateId: active.id,
-        at: Date.now(),
-        durationMs: 0,
-        status: "success",
-        precoVarejo: product.precoVarejo,
-        precoAtacado: product.precoAtacado,
-        estoque: product.estoque,
-        secao: product.secao,
-        grupo: product.grupo,
-        codigoInterno: product.codigoInterno,
-        usuario,
+    try {
+      toast.loading("Enviando para impressora...", { id: "a4-print" });
+      await printA4Pdf(active, fullProducts, currentConfig.a4PrinterName);
+      toast.success(
+        currentConfig.a4PrinterName
+          ? `Impresso em ${currentConfig.a4PrinterName}`
+          : "PDF aberto no visualizador padrão",
+        { id: "a4-print" }
+      );
+      productQueue.forEach((product) => {
+        storage.pushPrintEvent({
+          ean: product.ean,
+          descricao: product.descricao,
+          quantidade: 1,
+          templateId: active.id,
+          at: Date.now(),
+          durationMs: 0,
+          status: "success",
+          precoVarejo: product.precoVarejo,
+          precoAtacado: product.precoAtacado,
+          estoque: product.estoque,
+          secao: product.secao,
+          grupo: product.grupo,
+          codigoInterno: product.codigoInterno,
+          usuario,
+        });
       });
-    });
+    } catch (e) {
+      toast.error("Erro ao imprimir: " + (e instanceof Error ? e.message : String(e)), { id: "a4-print" });
+    }
   };
 
   if (!active) {
@@ -175,6 +222,8 @@ export function A4Module({ config }: Props) {
   }
 
   return (
+    <>
+    <A4NewTemplateWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onConfirm={handleWizardConfirm} />
     <div className="flex h-full flex-col overflow-hidden">
       {/* Toolbar do módulo */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-card px-4 py-2 text-xs">
@@ -221,7 +270,7 @@ export function A4Module({ config }: Props) {
       )}
 
       {tab === "print" && (
-        <div className="grid flex-1 grid-cols-1 gap-4 overflow-auto p-4 lg:grid-cols-[1fr_460px]">
+        <div className="grid flex-1 grid-cols-1 gap-4 overflow-auto p-4 lg:grid-cols-[1fr_minmax(300px,420px)]">
           <section className="space-y-4">
             <div className="rounded-lg border bg-card p-4">
               <div className="flex items-center justify-between">
@@ -284,28 +333,82 @@ export function A4Module({ config }: Props) {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[300px] overflow-auto pr-1">
                   {productQueue.map((p, i) => (
-                    <div key={i} className="group relative flex items-center gap-3 rounded border bg-background p-2 transition-hover hover:border-primary/50">
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate text-xs font-medium">{p.descricao}</div>
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <span className="font-mono">{p.ean}</span>
-                          <span>•</span>
-                          {p.precoOriginal && p.precoOriginal > (p.precoVarejo || 0) ? (
-                            <>
-                              <span className="line-through opacity-60">R$ {p.precoOriginal.toFixed(2).replace(".", ",")}</span>
-                              <span className="text-primary font-bold">R$ {p.precoVarejo?.toFixed(2).replace(".", ",")}</span>
-                            </>
-                          ) : (
-                            <span className="text-primary font-bold">R$ {p.precoVarejo?.toFixed(2).replace(".", ",")}</span>
-                          )}
+                    <div key={i} className="group relative rounded border bg-background p-2 transition-hover hover:border-primary/50">
+                      {editingIndex === i ? (
+                        <div className="space-y-1.5">
+                          <div className="truncate text-xs font-medium">{p.descricao}</div>
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label className="text-[10px] text-muted-foreground">De R$</label>
+                              <Input
+                                value={editDe}
+                                onChange={(e) => setEditDe(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && confirmEdit()}
+                                className="h-7 text-xs mt-0.5"
+                                placeholder="0,00"
+                                autoFocus
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-[10px] text-muted-foreground">Por R$</label>
+                              <Input
+                                value={editPor}
+                                onChange={(e) => setEditPor(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && confirmEdit()}
+                                className="h-7 text-xs mt-0.5"
+                                placeholder="0,00"
+                              />
+                            </div>
+                            <div className="flex items-end gap-1 pb-0.5">
+                              <button
+                                onClick={confirmEdit}
+                                className="rounded bg-primary px-2 py-1 text-[10px] font-bold text-primary-foreground hover:bg-primary/90"
+                              >
+                                OK
+                              </button>
+                              <button
+                                onClick={() => setEditingIndex(null)}
+                                className="rounded border px-2 py-1 text-[10px] hover:bg-muted"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <button
-                        onClick={() => removeFromQueue(i)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-destructive"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="truncate text-xs font-medium">{p.descricao}</div>
+                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                              <span className="font-mono">{p.ean}</span>
+                              <span>•</span>
+                              {p.precoOriginal && p.precoOriginal > (p.precoVarejo || 0) ? (
+                                <>
+                                  <span className="line-through opacity-60">R$ {p.precoOriginal.toFixed(2).replace(".", ",")}</span>
+                                  <span className="text-primary font-bold">R$ {p.precoVarejo?.toFixed(2).replace(".", ",")}</span>
+                                </>
+                              ) : (
+                                <span className="text-primary font-bold">R$ {p.precoVarejo?.toFixed(2).replace(".", ",")}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => startEdit(i)}
+                              className="p-1 hover:text-primary"
+                              title="Editar preços"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => removeFromQueue(i)}
+                              className="p-1 hover:text-destructive"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <div className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[8px] font-bold shadow-sm">
                         {i + 1}
                       </div>
@@ -356,6 +459,7 @@ export function A4Module({ config }: Props) {
         </div>
       )}
     </div>
+    </>
   );
 }
 

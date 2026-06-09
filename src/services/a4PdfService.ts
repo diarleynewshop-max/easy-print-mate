@@ -303,31 +303,21 @@ export function downloadA4Pdf(template: A4Template, products: (Product | null)[]
   doc.save(filename);
 }
 
-export function printA4Pdf(template: A4Template, products: (Product | null)[], printerName?: string) {
+export async function printA4Pdf(template: A4Template, products: (Product | null)[], printerName?: string): Promise<void> {
   const doc = renderA4Pdf(template, products);
-  const url = doc.output("bloburl");
 
   if (window.easyPrint?.isDesktop) {
-    // No desktop, usamos o IPC para imprimir diretamente na impressora selecionada
-    const dataUrl = doc.output("dataurlstring");
-    window.easyPrint.printPdf(dataUrl, printerName || "")
-      .catch((err) => {
-        console.error("Erro ao imprimir PDF no Desktop:", err);
-        // Fallback: abre no navegador se falhar o silent print
-        window.open(url as unknown as string, "_blank")?.print();
-      });
+    // Envia os bytes do PDF via IPC — evita limitação de tamanho da data URL
+    const buf = doc.output("arraybuffer") as ArrayBuffer;
+    const bytes = Array.from(new Uint8Array(buf));
+    await window.easyPrint.printPdf(bytes, printerName || "");
     return;
   }
 
-  const w = window.open(url as unknown as string, "_blank");
+  // Web fallback: abre blob URL e aciona diálogo de impressão
+  const url = doc.output("bloburl") as unknown as string;
+  const w = window.open(url, "_blank");
   if (w) {
-    setTimeout(() => {
-      try {
-        w.focus();
-        w.print();
-      } catch {
-        // Fallback for environments where window.print() is not available or blocked
-      }
-    }, 500);
+    setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 500);
   }
 }

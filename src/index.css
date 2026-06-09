@@ -74,6 +74,9 @@
 }
 
 @layer base {
+  html {
+    font-size: clamp(12px, 0.5vw + 10px, 14px);
+  }
   * {
     @apply border-border;
   }

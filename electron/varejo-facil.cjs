@@ -181,12 +181,13 @@ function normalizarPrecos(precoVenda, precoOferta) {
   const venda = typeof precoVenda === "number" && precoVenda > 0 ? precoVenda : 0;
   const oferta = typeof precoOferta === "number" && precoOferta > 0 ? precoOferta : 0;
 
+  // precoVenda1 = "De" (preço original/antigo), precoOferta1 = "Por" (preço promocional)
+  // Promoção válida apenas quando precoOferta1 < precoVenda1 (desconto real)
   if (oferta > 0 && oferta < venda) {
     return { varejo: oferta, original: venda };
   }
-  if (oferta > 0 && oferta >= venda) {
-    return { varejo: oferta, original: venda };
-  }
+
+  // Sem promoção válida (oferta=0 ou oferta>=venda): preço de venda como preço principal
   return { varejo: venda, original: venda };
 }
 

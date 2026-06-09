@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { A4DynamicKey, A4Element, A4ElementType, A4ShapeKind, A4Template } from "@/types/a4";
 import { A4_HEIGHT_MM, A4_WIDTH_MM, getBlockRects, getDynamicValue } from "@/services/a4PdfService";
@@ -54,6 +54,22 @@ export function A4Editor({ template, product, onChange }: Props) {
   const blockRects = useMemo(() => getBlockRects(template), [template]);
   const firstBlock = blockRects[0];
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const canvasScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = canvasScrollRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom((z) => {
+        const next = z + (e.deltaY < 0 ? 0.2 : -0.2);
+        return Math.min(6, Math.max(0.4, Math.round(next * 10) / 10));
+      });
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
   const selected = template.elements.find((e) => e.id === selectedId) || null;
 
   const update = (patch: Partial<A4Template>) => onChange({ ...template, ...patch });
@@ -338,7 +354,7 @@ export function A4Editor({ template, product, onChange }: Props) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-8 flex justify-center">
+        <div ref={canvasScrollRef} className="flex-1 overflow-auto p-8 flex justify-center">
           <div className="relative bg-white shadow-2xl" style={{ width: A4_WIDTH_MM * zoom, height: A4_HEIGHT_MM * zoom }}>
             {blockRects.map((rect, blockIdx) => (
               <div

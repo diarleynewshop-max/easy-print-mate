@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const os = require("os");
@@ -186,8 +186,8 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
-    minWidth: 1100,
-    minHeight: 720,
+    minWidth: 960,
+    minHeight: 640,
     title: "Easy Print Mate",
     icon: iconPath,
     webPreferences: {
@@ -444,41 +444,46 @@ ipcMain.handle("print:raw-prn", async (_event, content, printerName = RAW_PRINTE
   }
 });
 
-ipcMain.handle("print:pdf", async (_event, pdfDataUrl, printerName) => {
-  if (!pdfDataUrl) throw new Error("PDF data URL vazio");
-  
-  // No Windows/Mac, o BrowserWindow consegue carregar um PDF dataurl e imprimir.
-  const win = new BrowserWindow({ 
-    show: false, 
-    webPreferences: { 
-      nodeIntegration: false, 
-      contextIsolation: true,
-      plugins: true // Necessário para o visualizador de PDF interno
-    } 
-  });
-  
-  return new Promise((resolve, reject) => {
-    win.loadURL(pdfDataUrl).then(() => {
-      // Aguarda um pouco para o PDF carregar totalmente no visualizador
-      setTimeout(() => {
-        const options = {
-          silent: !!printerName,
-          deviceName: printerName || "",
-          printBackground: true,
-          margins: { marginType: "none" }
-        };
+ipcMain.handle("print:pdf", async (_event, pdfBytesArr, printerName) => {
+  if (!pdfBytesArr || !pdfBytesArr.length) throw new Error("PDF vazio");
 
-        win.webContents.print(options, (success, failureReason) => {
-          win.close();
-          if (success) resolve({ ok: true });
-          else reject(new Error(failureReason || "Falha na impressão PDF"));
-        });
-      }, 1500);
-    }).catch(err => {
-      win.close();
-      reject(err);
+  const tmpFile = path.join(os.tmpdir(), `easy-print-${Date.now()}.pdf`);
+  fs.writeFileSync(tmpFile, Buffer.from(pdfBytesArr));
+
+  // Se tiver impressora definida, tenta impressão silenciosa via BrowserWindow
+  if (printerName) {
+    const win = new BrowserWindow({
+      show: false,
+      webPreferences: { nodeIntegration: false, contextIsolation: true }
     });
-  });
+
+    try {
+      await win.loadFile(tmpFile);
+      await new Promise((resolve, reject) => {
+        setTimeout(() => {
+          win.webContents.print(
+            { silent: true, deviceName: printerName, printBackground: true, margins: { marginType: "none" } },
+            (success, reason) => {
+              win.close();
+              try { fs.unlinkSync(tmpFile); } catch {}
+              if (success) resolve({ ok: true });
+              else reject(new Error(reason || "Falha na impressão"));
+            }
+          );
+        }, 2000);
+      });
+      return { ok: true };
+    } catch (err) {
+      if (!win.isDestroyed()) win.close();
+      // Fallback: abre no visualizador padrão
+      shell.openPath(tmpFile);
+      return { ok: true, fallback: true };
+    }
+  }
+
+  // Sem impressora selecionada: abre no visualizador de PDF do sistema
+  shell.openPath(tmpFile);
+  return { ok: true, fallback: true };
 });
 
 ipcMain.handle("db:sync-products", (_event, products) => {
