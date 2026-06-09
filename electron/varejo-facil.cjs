@@ -440,7 +440,7 @@ async function atualizarPrecoOferta({ empresa: empresaInput, companyName, baseUr
 
   const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
 
-  // Busca o registro atual para montar o payload completo
+  // Busca o registro atual para obter o id do registro de preço (ex: id=270)
   const getResult = await fetchErpJson(baseUrl, token, `/v1/produto/produtos/${produtoId}/precos`, debug, `get-precos-update:${produtoId}`);
   if (!getResult.response.ok) throw new Error(`Nao foi possivel obter precos do produto ${produtoId}: ${getResult.response.status}`);
 
@@ -449,23 +449,34 @@ async function atualizarPrecoOferta({ empresa: empresaInput, companyName, baseUr
   if (!selecionado) throw new Error(`Nenhum registro de preco encontrado para produto ${produtoId}`);
 
   const lojaIdUsada = selecionado.lojaId ?? lojaId;
-  const payload = { ...selecionado, precoOferta1: precoOferta, precoOferta: precoOferta };
+  const precoRecordId = selecionado.id; // id do registro de preço (ex: 270)
+  const payload = { ...selecionado, precoOferta1: precoOferta };
 
-  // Tenta os endpoints mais prováveis do Varejo Facil
-  const endpoints = [
-    `/v1/produto/produtos/${produtoId}/precos/${lojaIdUsada}`,
-    `/v1/produto/precos/${lojaIdUsada}/${produtoId}`,
-    `/v1/produto/produtos/${produtoId}/precos`,
-  ];
+  // Candidatos em ordem de probabilidade:
+  // 1. PUT pelo id do registro de preço  (padrão REST com ID próprio)
+  // 2. PUT pelo id do produto + lojaId
+  // 3. POST (alguns ERPs usam POST para upsert)
+  const candidates = [];
 
-  for (const method of ["PUT", "PATCH"]) {
-    for (const endpoint of endpoints) {
-      const bodyToSend = method === "PATCH" ? { precoOferta1: precoOferta, precoOferta: precoOferta } : payload;
-      const result = await mutateErpJson(baseUrl, token, endpoint, method, bodyToSend, debug);
-      if (result.response.ok) {
-        return { success: true, endpoint, lojaId: lojaIdUsada, precoOferta, debug };
-      }
+  if (precoRecordId != null) {
+    candidates.push({ method: "PUT",   path: `/v1/produto/precos/${precoRecordId}` });
+    candidates.push({ method: "PUT",   path: `/v1/produto/produto-precos/${precoRecordId}` });
+    candidates.push({ method: "PATCH", path: `/v1/produto/precos/${precoRecordId}` });
+    candidates.push({ method: "POST",  path: `/v1/produto/precos/${precoRecordId}` });
+  }
+  candidates.push({ method: "PUT",   path: `/v1/produto/produtos/${produtoId}/precos/${lojaIdUsada}` });
+  candidates.push({ method: "PUT",   path: `/v1/produto/produtos/${produtoId}/precos` });
+  candidates.push({ method: "POST",  path: `/v1/produto/produtos/${produtoId}/precos` });
+  candidates.push({ method: "PUT",   path: `/v1/produto/precos/${lojaIdUsada}/${produtoId}` });
+
+  for (const { method, path } of candidates) {
+    const bodyToSend = method === "PATCH" ? { precoOferta1: precoOferta } : payload;
+    const result = await mutateErpJson(baseUrl, token, path, method, bodyToSend, debug);
+    if (result.response.ok) {
+      return { success: true, endpoint: path, method, lojaId: lojaIdUsada, precoOferta, debug };
     }
+    // Para em 401 (auth inválido) imediatamente
+    if (result.response.status === 401) break;
   }
 
   const err = new Error("Nao foi possivel atualizar o preco de oferta no ERP. Verifique permissoes da API.");
