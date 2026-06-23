@@ -274,6 +274,10 @@ async function consultarProduto({ codigo, empresa: empresaInput, companyName, lo
     throw error;
   }
 
+  // Sempre prioriza o GTIN/codigo de barras real do produto no ERP.
+  // Sem isso, ao buscar por codigo interno ou nome, o campo "ean" ficava com o texto digitado.
+  eanResolvido = produto.gtin || produto.codigoBarras || eanResolvido;
+
   const produtoId = String(produto.id);
   const lojaAtiva = Number.isFinite(lojaId) ? Number(lojaId) : ERP_LOJA_BY_EMPRESA[empresa] || 1;
   const [precos, estoque, secao, grupo] = await Promise.all([
