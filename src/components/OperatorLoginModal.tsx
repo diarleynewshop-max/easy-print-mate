@@ -9,7 +9,7 @@ import { AlertTriangle, UserCircle2 } from "lucide-react";
 
 interface Props {
   open: boolean;
-  onAuth: (user: AppUser) => void;
+  onAuth: (user: AppUser, budget: number) => void;
   onCancel: () => void;
 }
 
@@ -17,6 +17,7 @@ export function OperatorLoginModal({ open, onAuth, onCancel }: Props) {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [userId, setUserId] = useState("");
   const [senha, setSenha] = useState("");
+  const [quantidade, setQuantidade] = useState("10");
   const [err, setErr] = useState(false);
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export function OperatorLoginModal({ open, onAuth, onCancel }: Props) {
     setUsers(list);
     setUserId((current) => current || list[0]?.id || "");
     setSenha("");
+    setQuantidade("10");
     setErr(false);
   }, [open]);
 
@@ -33,7 +35,8 @@ export function OperatorLoginModal({ open, onAuth, onCancel }: Props) {
     if (!selected) return setErr(true);
     const user = authenticateUser(selected.nome, senha);
     if (!user) return setErr(true);
-    onAuth(user);
+    const budget = Math.max(1, Math.round(Number(quantidade)) || 1);
+    onAuth(user, budget);
   };
 
   return (
@@ -44,7 +47,7 @@ export function OperatorLoginModal({ open, onAuth, onCancel }: Props) {
             <UserCircle2 className="h-5 w-5 text-primary" /> Quem esta imprimindo?
           </DialogTitle>
           <DialogDescription>
-            Selecione seu usuario e informe a senha para registrar a impressao.
+            Selecione seu usuario, informe a senha e quantos produtos diferentes vai imprimir agora.
           </DialogDescription>
         </DialogHeader>
 
@@ -72,6 +75,23 @@ export function OperatorLoginModal({ open, onAuth, onCancel }: Props) {
               placeholder="Senha"
               autoFocus
             />
+          </div>
+          <div>
+            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Quantos produtos diferentes voce vai imprimir?
+            </label>
+            <Input
+              type="number"
+              min={1}
+              max={999}
+              value={quantidade}
+              onChange={(e) => setQuantidade(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+              placeholder="Ex: 10"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Depois desse total a senha sera solicitada novamente.
+            </p>
           </div>
           {err && (
             <p className="text-xs text-destructive flex items-center gap-1">

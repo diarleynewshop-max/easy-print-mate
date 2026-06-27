@@ -4,7 +4,7 @@ import { ensureDefaultAdmin, createUser, deleteUser } from "@/services/userAuth"
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Lock, Trash2, UserPlus, ShieldCheck } from "lucide-react";
+import { Lock, Trash2, UserPlus, ShieldCheck, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -16,17 +16,25 @@ export function UsersManager({ operator }: Props) {
   const [nome, setNome] = useState("");
   const [senha, setSenha] = useState("");
   const [nivel, setNivel] = useState<"super" | "padrao">("padrao");
+  const [confirmSenha, setConfirmSenha] = useState("");
 
   const isSuper = operator?.nivel === "super";
+  const isElevatingToSuper = nivel === "super";
+  const confirmOk = !isElevatingToSuper || (!!operator && confirmSenha === operator.senha);
 
   const refresh = () => setUsers(ensureDefaultAdmin());
 
   const handleCreate = () => {
+    if (isElevatingToSuper && !confirmOk) {
+      toast.error("Senha de confirmacao incorreta. Criar outro usuario super exige reconfirmar sua senha.");
+      return;
+    }
     try {
       createUser(nome, senha, nivel);
       setNome("");
       setSenha("");
       setNivel("padrao");
+      setConfirmSenha("");
       refresh();
       toast.success("Usuario criado");
     } catch (e) {
@@ -84,7 +92,7 @@ export function UsersManager({ operator }: Props) {
             </div>
             <div>
               <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Nivel de acesso</label>
-              <Select value={nivel} onValueChange={(v) => setNivel(v as "super" | "padrao")}>
+              <Select value={nivel} onValueChange={(v) => { setNivel(v as "super" | "padrao"); setConfirmSenha(""); }}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -94,8 +102,26 @@ export function UsersManager({ operator }: Props) {
                 </SelectContent>
               </Select>
             </div>
+            {isElevatingToSuper && (
+              <div>
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Confirme sua senha (super) para autorizar
+                </label>
+                <Input
+                  type="password"
+                  value={confirmSenha}
+                  onChange={(e) => setConfirmSenha(e.target.value)}
+                  placeholder="Sua senha"
+                />
+              </div>
+            )}
           </div>
-          <Button onClick={handleCreate} disabled={!nome.trim() || senha.length < 2}>Criar usuario</Button>
+          {isElevatingToSuper && !confirmOk && confirmSenha.length > 0 && (
+            <p className="text-xs text-destructive flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" /> Senha de confirmacao incorreta.
+            </p>
+          )}
+          <Button onClick={handleCreate} disabled={!nome.trim() || senha.length < 2 || !confirmOk}>Criar usuario</Button>
         </div>
       ) : (
         <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground flex items-center gap-2">

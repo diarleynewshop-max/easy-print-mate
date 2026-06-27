@@ -30,9 +30,10 @@ import { cn } from "@/lib/utils";
 interface Props {
   config: VFConfig;
   ensureOperator: () => Promise<AppUser | null>;
+  consumeOperatorBudget: (count: number) => void;
 }
 
-export function A4Module({ config, ensureOperator }: Props) {
+export function A4Module({ config, ensureOperator, consumeOperatorBudget }: Props) {
   const [tab, setTab] = useState<"print" | "editor">("print");
   const [templates, setTemplates] = useState<A4Template[]>(() => a4Storage.getTemplates());
   const [activeId, setActiveId] = useState<string>(() => a4Storage.getActive() || templates[0]?.id || "");
@@ -210,6 +211,7 @@ export function A4Module({ config, ensureOperator }: Props) {
           usuario,
         });
       });
+      consumeOperatorBudget(productQueue.length);
     } catch (e) {
       toast.error("Erro ao imprimir: " + (e instanceof Error ? e.message : String(e)), { id: "a4-print" });
     }

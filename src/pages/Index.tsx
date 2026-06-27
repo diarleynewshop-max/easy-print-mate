@@ -83,6 +83,8 @@ const Index = () => {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [operator, setOperator] = useState<AppUser | null>(null);
+  const [operatorBudget, setOperatorBudget] = useState(0);
+  const [operatorUsed, setOperatorUsed] = useState(0);
   const [operatorLoginOpen, setOperatorLoginOpen] = useState(false);
   const operatorResolveRef = useRef<((user: AppUser | null) => void) | null>(null);
 
@@ -250,15 +252,29 @@ const Index = () => {
   };
 
   const ensureOperator = (): Promise<AppUser | null> => {
-    if (operator) return Promise.resolve(operator);
+    if (operator && operatorUsed < operatorBudget) return Promise.resolve(operator);
+    setOperator(null);
     setOperatorLoginOpen(true);
     return new Promise((resolve) => {
       operatorResolveRef.current = resolve;
     });
   };
 
-  const handleOperatorAuth = (user: AppUser) => {
+  const consumeOperatorBudget = (count: number) => {
+    setOperatorUsed((prev) => {
+      const next = prev + count;
+      if (next >= operatorBudget) {
+        setOperator(null);
+        setOperatorBudget(0);
+      }
+      return next;
+    });
+  };
+
+  const handleOperatorAuth = (user: AppUser, budget: number) => {
     setOperator(user);
+    setOperatorBudget(budget);
+    setOperatorUsed(0);
     setOperatorLoginOpen(false);
     operatorResolveRef.current?.(user);
     operatorResolveRef.current = null;
@@ -272,6 +288,8 @@ const Index = () => {
 
   const handleSwitchOperator = () => {
     setOperator(null);
+    setOperatorBudget(0);
+    setOperatorUsed(0);
     setOperatorLoginOpen(true);
   };
 
@@ -298,6 +316,7 @@ const Index = () => {
     const ok = await sendRaw(buildEplPrn(activeTemplate, product, copies), `${copies} etiqueta(s)`);
     recordEvent(product, copies, ok ? "success" : "error", user.nome);
     if (ok) {
+      consumeOperatorBudget(1);
       lastPrintedRef.current = product;
       setTimeout(() => {
         setCode("");
@@ -350,6 +369,7 @@ const Index = () => {
     const ok = await sendRaw(buildEplBatchPrn(activeTemplate, printQueue), `Fila com ${queueTotal} etiqueta(s)`);
     printQueue.forEach((item) => recordEvent(item.product, item.quantity, ok ? "success" : "error", user.nome));
     if (ok) {
+      consumeOperatorBudget(printQueue.length);
       lastPrintedRef.current = printQueue[printQueue.length - 1]?.product || null;
       setPrintQueue([]);
       setCode("");
@@ -365,6 +385,7 @@ const Index = () => {
     if (!user) return toast.error("Selecione um usuario para imprimir");
     const ok = await sendRaw(buildEplPrn(activeTemplate, p, copies), "Reimpressao");
     recordEvent(p, copies, ok ? "success" : "error", user.nome);
+    if (ok) consumeOperatorBudget(1);
   };
 
   const handleTestPrint = async () => {
@@ -493,7 +514,9 @@ const Index = () => {
             <div className="flex items-center justify-between gap-1.5 rounded-md bg-sidebar-accent/50 px-2 py-1.5">
               <div className="flex items-center gap-1.5 min-w-0">
                 <UserCircle2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                <span className="text-xs truncate">{operator ? operator.nome : "Sem operador"}</span>
+                <span className="text-xs truncate">
+                  {operator ? `${operator.nome} (${Math.max(0, operatorBudget - operatorUsed)} restantes)` : "Sem operador"}
+                </span>
               </div>
               <button
                 onClick={handleSwitchOperator}
@@ -934,7 +957,7 @@ const Index = () => {
 
         {view === "a4" && (
           <div className="flex-1 overflow-hidden no-print">
-            <A4Module config={config} ensureOperator={ensureOperator} />
+            <A4Module config={config} ensureOperator={ensureOperator} consumeOperatorBudget={consumeOperatorBudget} />
           </div>
         )}
 
