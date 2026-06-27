@@ -1,4 +1,4 @@
-import { LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
+import { LabelTemplate, VFConfig, HistoryEntry, PrintEvent, AppUser } from "@/types/label";
 import { elginPreset, ELGIN_PRESET_ID, anelPreset, ANEL_PRESET_ID, amarelaPreset, AMARELA_PRESET_ID } from "./presets";
 
 const K = {
@@ -7,6 +7,7 @@ const K = {
   config: "vf_api_config",
   history: "vf_history",
   prints: "vf_print_events",
+  users: "vf_app_users",
 };
 
 const memoryStore: Record<string, string> = {};
@@ -142,6 +143,17 @@ export const storage = {
   },
   clearPrintEvents() {
     removeLocal(K.prints);
+  },
+  getUsers(): AppUser[] {
+    try {
+      const raw = readLocal(K.users);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  },
+  saveUsers(users: AppUser[]) {
+    writeLocal(K.users, JSON.stringify(users));
   },
 };
 

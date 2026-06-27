@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { A4Template, A4FilledBlock } from "@/types/a4";
-import { Product, VFConfig } from "@/types/label";
+import { Product, VFConfig, AppUser } from "@/types/label";
 import { a4Storage, defaultA4Templates, newA4Template } from "@/services/a4Storage";
 import { downloadA4Pdf, getA4RenderMetrics, getBlockRects, printA4Pdf, A4_WIDTH_MM, A4_HEIGHT_MM, getDynamicValue } from "@/services/a4PdfService";
-import { requestPrintUserName } from "@/services/printUser";
 import { storage } from "@/services/storage";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
 import { Button } from "@/components/ui/button";
@@ -30,9 +29,10 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   config: VFConfig;
+  ensureOperator: () => Promise<AppUser | null>;
 }
 
-export function A4Module({ config }: Props) {
+export function A4Module({ config, ensureOperator }: Props) {
   const [tab, setTab] = useState<"print" | "editor">("print");
   const [templates, setTemplates] = useState<A4Template[]>(() => a4Storage.getTemplates());
   const [activeId, setActiveId] = useState<string>(() => a4Storage.getActive() || templates[0]?.id || "");
@@ -175,7 +175,9 @@ export function A4Module({ config }: Props) {
   const handlePrint = async () => {
     if (!active || productQueue.length === 0) return toast.error("Bipe pelo menos um produto");
     const currentConfig = storage.getConfig();
-    const usuario = requestPrintUserName();
+    const user = await ensureOperator();
+    if (!user) return toast.error("Selecione um usuario para imprimir");
+    const usuario = user.nome;
 
     const fullProducts = repeatMode
       ? Array.from({ length: blocksPerPage }, () => productQueue[0])

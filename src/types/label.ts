@@ -129,3 +129,13 @@ export interface PrintQueueItem {
   product: Product;
   quantity: number;
 }
+
+export type UserLevel = "super" | "padrao";
+
+export interface AppUser {
+  id: string;
+  nome: string;
+  senha: string;
+  nivel: UserLevel;
+  criadoEm: number;
+}

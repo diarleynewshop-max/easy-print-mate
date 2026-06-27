@@ -212,7 +212,11 @@ function eplHeader(template: LabelTemplate) {
   const marginRightMm = template.marginRightMm ?? 0;
   const marginBottomMm = template.marginBottomMm ?? 0;
   const pageWidthMm = template.paperWidthMm || (columns * template.widthMm + (columns - 1) * columnGapMm + marginLeftMm + marginRightMm);
-  const pageHeightMm = template.heightMm;
+  // A altura enviada à impressora precisa incluir as margens de topo/base,
+  // já que field.y é deslocado por marginTopMm em getFieldPosition. Sem isso,
+  // o conteúdo é empurrado para baixo mas a etiqueta continua com a altura
+  // original, cortando essa faixa (a "zona morta" no fim da etiqueta).
+  const pageHeightMm = template.heightMm + marginTopMm + marginBottomMm;
   const rotationCmd = template.printRotation === 180 ? "ZB" : "ZT";
   const pageWidthDots = mmToDots(pageWidthMm, template);
   const qLimit = pageWidthDots;

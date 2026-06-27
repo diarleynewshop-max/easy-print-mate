@@ -1,11 +1,10 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent, PrintQueueItem } from "@/types/label";
+import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent, PrintQueueItem, AppUser } from "@/types/label";
 import { storage, defaultTemplates, ensureDefaultTemplates, restoreElginPreset } from "@/services/storage";
 import { ELGIN_PRESET_ID } from "@/services/presets";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
 import { buildEplBatchPrn, buildEplPrn, buildTestPrn, buildCalibrationPrn, downloadEplPrn } from "@/services/eplService";
 import { printService } from "@/services/printService";
-import { requestPrintUserName } from "@/services/printUser";
 import { validateTemplate, computeHorizontalSpacing } from "@/services/labelValidation";
 import { usePrintServerStatus } from "@/hooks/usePrintServerStatus";
 import { ProductSearch } from "@/components/ProductSearch";
@@ -15,6 +14,8 @@ import { ApiConfig } from "@/components/ApiConfig";
 import { Metrics } from "@/components/Metrics";
 import { A4Module } from "@/components/A4Module";
 import { PromoModule } from "@/components/PromoModule";
+import { OperatorLoginModal } from "@/components/OperatorLoginModal";
+import { UsersManager } from "@/components/UsersManager";
 import { useProductDiscovery } from "@/hooks/useProductDiscovery";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -42,10 +43,13 @@ import {
   ChevronLeft,
   ChevronRight,
   BadgePercent,
+  Users,
+  UserCircle2,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type View = "scan" | "editor" | "config" | "metrics" | "a4" | "promo";
+type View = "scan" | "editor" | "config" | "metrics" | "a4" | "promo" | "users";
 
 const Index = () => {
   useProductDiscovery();
@@ -78,6 +82,9 @@ const Index = () => {
   });
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [operator, setOperator] = useState<AppUser | null>(null);
+  const [operatorLoginOpen, setOperatorLoginOpen] = useState(false);
+  const operatorResolveRef = useRef<((user: AppUser | null) => void) | null>(null);
 
   const activeTemplate = useMemo(
     () => templates.find((t) => t.id === activeTemplateId) || templates[0],
@@ -242,6 +249,32 @@ const Index = () => {
     lastActionRef.current = now;
   };
 
+  const ensureOperator = (): Promise<AppUser | null> => {
+    if (operator) return Promise.resolve(operator);
+    setOperatorLoginOpen(true);
+    return new Promise((resolve) => {
+      operatorResolveRef.current = resolve;
+    });
+  };
+
+  const handleOperatorAuth = (user: AppUser) => {
+    setOperator(user);
+    setOperatorLoginOpen(false);
+    operatorResolveRef.current?.(user);
+    operatorResolveRef.current = null;
+  };
+
+  const handleOperatorCancel = () => {
+    setOperatorLoginOpen(false);
+    operatorResolveRef.current?.(null);
+    operatorResolveRef.current = null;
+  };
+
+  const handleSwitchOperator = () => {
+    setOperator(null);
+    setOperatorLoginOpen(true);
+  };
+
   const sendRaw = async (content: string, label: string) => {
     try {
       const printerName = activeTemplate?.preferredPrinterName || config.labelPrinterName || "ELGIN L42PRO FULL";
@@ -260,9 +293,10 @@ const Index = () => {
     if (!product) return toast.error("Nenhum produto selecionado");
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
     if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
-    const usuario = requestPrintUserName();
+    const user = await ensureOperator();
+    if (!user) return toast.error("Selecione um usuario para imprimir");
     const ok = await sendRaw(buildEplPrn(activeTemplate, product, copies), `${copies} etiqueta(s)`);
-    recordEvent(product, copies, ok ? "success" : "error", usuario);
+    recordEvent(product, copies, ok ? "success" : "error", user.nome);
     if (ok) {
       lastPrintedRef.current = product;
       setTimeout(() => {
@@ -311,9 +345,10 @@ const Index = () => {
     if (!printQueue.length) return toast.error("Fila vazia");
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
     if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
-    const usuario = requestPrintUserName();
+    const user = await ensureOperator();
+    if (!user) return toast.error("Selecione um usuario para imprimir");
     const ok = await sendRaw(buildEplBatchPrn(activeTemplate, printQueue), `Fila com ${queueTotal} etiqueta(s)`);
-    printQueue.forEach((item) => recordEvent(item.product, item.quantity, ok ? "success" : "error", usuario));
+    printQueue.forEach((item) => recordEvent(item.product, item.quantity, ok ? "success" : "error", user.nome));
     if (ok) {
       lastPrintedRef.current = printQueue[printQueue.length - 1]?.product || null;
       setPrintQueue([]);
@@ -326,20 +361,19 @@ const Index = () => {
     const p = lastPrintedRef.current;
     if (!p) return toast.error("Nenhuma impressao anterior");
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
-    const usuario = requestPrintUserName();
+    const user = await ensureOperator();
+    if (!user) return toast.error("Selecione um usuario para imprimir");
     const ok = await sendRaw(buildEplPrn(activeTemplate, p, copies), "Reimpressao");
-    recordEvent(p, copies, ok ? "success" : "error", usuario);
+    recordEvent(p, copies, ok ? "success" : "error", user.nome);
   };
 
   const handleTestPrint = async () => {
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
-    requestPrintUserName();
     await sendRaw(buildTestPrn(activeTemplate), "Etiqueta de teste");
   };
 
   const handleCalibration = async () => {
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
-    requestPrintUserName();
     await sendRaw(buildCalibrationPrn(activeTemplate), "Calibracao");
   };
 
@@ -450,8 +484,27 @@ const Index = () => {
           <NavBtn icon={<FileText />} label="Etiquetas A4 / PDF" active={view === "a4"} onClick={() => setView("a4")} collapsed={sidebarCollapsed} />
           <NavBtn icon={<BadgePercent />} label="Item em Promoção" active={view === "promo"} onClick={() => setView("promo")} collapsed={sidebarCollapsed} />
           <NavBtn icon={<BarChart3 />} label="Metricas" active={view === "metrics"} onClick={() => setView("metrics")} collapsed={sidebarCollapsed} />
+          <NavBtn icon={<Users />} label="Usuarios" active={view === "users"} onClick={() => setView("users")} collapsed={sidebarCollapsed} />
           <NavBtn icon={<Settings />} label="Configuracao API" active={view === "config"} onClick={() => setView("config")} collapsed={sidebarCollapsed} />
         </nav>
+
+        {!sidebarCollapsed && (
+          <div className="mt-auto shrink-0 border-t border-sidebar-border p-2">
+            <div className="flex items-center justify-between gap-1.5 rounded-md bg-sidebar-accent/50 px-2 py-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <UserCircle2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                <span className="text-xs truncate">{operator ? operator.nome : "Sem operador"}</span>
+              </div>
+              <button
+                onClick={handleSwitchOperator}
+                className="shrink-0 rounded-md p-1 hover:bg-sidebar-accent transition-colors"
+                title="Trocar usuario"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {!sidebarCollapsed && (
           <>
@@ -881,7 +934,7 @@ const Index = () => {
 
         {view === "a4" && (
           <div className="flex-1 overflow-hidden no-print">
-            <A4Module config={config} />
+            <A4Module config={config} ensureOperator={ensureOperator} />
           </div>
         )}
 
@@ -890,7 +943,20 @@ const Index = () => {
             <PromoModule config={config} />
           </div>
         )}
+
+        {view === "users" && (
+          <div className="flex-1 p-6 overflow-auto no-print">
+            <h2 className="text-xl font-bold mb-4">Usuarios</h2>
+            <UsersManager operator={operator} />
+          </div>
+        )}
       </main>
+
+      <OperatorLoginModal
+        open={operatorLoginOpen}
+        onAuth={handleOperatorAuth}
+        onCancel={handleOperatorCancel}
+      />
     </div>
   );
 };

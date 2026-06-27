@@ -626,6 +626,9 @@ function setupAutoUpdater() {
 // --- Worker de auto-sync ERP → SQLite ---
 let autoSyncTimer = null;
 let syncState = { running: false, lastRun: null, lastCount: 0, error: null };
+let consecutiveSyncFailures = 0;
+const AUTO_SYNC_INTERVAL_MS = 10 * 60 * 1000; // 10 min (era 3 min) — reduz carga no ERP
+const AUTO_SYNC_MAX_BACKOFF_MS = 60 * 60 * 1000; // 1h max quando o ERP esta indisponivel
 
 function getErpConfig() {
   try {
@@ -693,14 +696,29 @@ async function runAutoSyncCycle() {
 
     db.prepare("INSERT OR REPLACE INTO sync_meta (chave, valor, atualizado_em) VALUES ('auto_sync_last', ?, CURRENT_TIMESTAMP)").run(now);
     syncState = { running: false, lastRun: now, lastCount: produtos.length, error: null };
+    consecutiveSyncFailures = 0;
   } catch (err) {
     syncState = { running: false, lastRun: syncState.lastRun, lastCount: 0, error: err.message };
+    consecutiveSyncFailures += 1;
+    rescheduleAutoSync();
   }
 
   notifyWindows("erp:sync-status", syncState);
 }
 
-function startAutoSync(intervalMs = 3 * 60 * 1000) {
+// Circuit breaker: se o ERP estiver fora do ar, espaca os ciclos exponencialmente
+// em vez de continuar tentando no intervalo fixo (o que so aumenta a carga durante a queda).
+function rescheduleAutoSync() {
+  if (!autoSyncTimer) return;
+  clearInterval(autoSyncTimer);
+  const backoffMs = Math.min(
+    AUTO_SYNC_INTERVAL_MS * 2 ** consecutiveSyncFailures,
+    AUTO_SYNC_MAX_BACKOFF_MS
+  );
+  autoSyncTimer = setInterval(() => runAutoSyncCycle(), backoffMs);
+}
+
+function startAutoSync(intervalMs = AUTO_SYNC_INTERVAL_MS) {
   if (autoSyncTimer) clearInterval(autoSyncTimer);
   setTimeout(() => runAutoSyncCycle(), 20 * 1000);
   autoSyncTimer = setInterval(() => runAutoSyncCycle(), intervalMs);

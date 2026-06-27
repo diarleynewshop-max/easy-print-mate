@@ -7,16 +7,27 @@ import { toast } from "sonner";
  * Hook para descoberta automática de novos produtos.
  * Tenta buscar sequencialmente os IDs que ainda não existem no banco local.
  */
+// Limite de produtos descobertos por ciclo e intervalo entre tentativas,
+// para nao gerar uma rajada de requisicoes sequenciais ao ERP.
+const MAX_DISCOVERIES_PER_CYCLE = 10;
+const DISCOVERY_STEP_DELAY_MS = 5000;
+const DISCOVERY_CYCLE_INTERVAL_MS = 30 * 60 * 1000;
+
 export function useProductDiscovery() {
   const isRunningRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const discover = async () => {
+    const discover = async (count = 0) => {
       if (isRunningRef.current) return;
-      
+
       const config = storage.getConfig();
       if (!config.baseUrl || (!config.token && (!config.username || !config.password))) {
+        return;
+      }
+
+      if (count >= MAX_DISCOVERIES_PER_CYCLE) {
+        console.log("[Discovery] Limite de descobertas por ciclo atingido, aguardando próximo ciclo.");
         return;
       }
 
@@ -30,14 +41,14 @@ export function useProductDiscovery() {
 
         // Tenta buscar o próximo produto
         const result = await window.easyPrint.fetchProductByEan(config, String(nextId));
-        
+
         if (result && result.product && result.product.descricao) {
           // Produto encontrado! Salva no banco local
           await dbService.syncProducts([result.product]);
           console.log(`[Discovery] Novo produto descoberto e salvo: ID ${nextId} - ${result.product.descricao}`);
-          
-          // Se encontrou, tenta o próximo imediatamente na próxima iteração (recursivo via timeout curto)
-          timerRef.current = setTimeout(discover, 2000);
+
+          // Se encontrou, tenta o próximo com um intervalo para não sobrecarregar o ERP
+          timerRef.current = setTimeout(() => discover(count + 1), DISCOVERY_STEP_DELAY_MS);
         } else {
           console.log(`[Discovery] ID ${nextId} ainda não existe no ERP.`);
         }
@@ -49,13 +60,10 @@ export function useProductDiscovery() {
       }
     };
 
-    // Executa a cada 30 minutos (1800000 ms)
-    const INTERVAL = 30 * 60 * 1000;
-    
     // Primeira execução após 1 minuto de app aberto
-    const initialTimer = setTimeout(discover, 60 * 1000);
-    
-    const intervalTimer = setInterval(discover, INTERVAL);
+    const initialTimer = setTimeout(() => discover(), 60 * 1000);
+
+    const intervalTimer = setInterval(() => discover(), DISCOVERY_CYCLE_INTERVAL_MS);
 
     return () => {
       clearTimeout(initialTimer);

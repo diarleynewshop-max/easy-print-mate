@@ -72,7 +72,7 @@ async function getAccessToken(empresa, baseUrl, configuredToken, configuredUsern
   if (cachedToken) return cachedToken;
 
   if (username && password) {
-    const response = await fetch(`${baseUrl}/auth`, {
+    const response = await fetchWithRetry(`${baseUrl}/auth`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ username, password }),
@@ -119,10 +119,45 @@ function getItems(data) {
   return [];
 }
 
+const ERP_REQUEST_TIMEOUT_MS = 15000;
+const ERP_MAX_RETRIES = 2;
+const ERP_RETRY_BASE_DELAY_MS = 500;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Retry com backoff exponencial apenas para falhas transitorias (timeout, rede, 5xx, 429).
+// Evita martelar o ERP em erros definitivos (401/404) ou quando ele esta fora do ar.
+async function fetchWithRetry(url, options) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= ERP_MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ERP_REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      if ((response.status === 429 || response.status >= 500) && attempt < ERP_MAX_RETRIES) {
+        await sleep(ERP_RETRY_BASE_DELAY_MS * 2 ** attempt);
+        continue;
+      }
+      return response;
+    } catch (err) {
+      clearTimeout(timer);
+      lastError = err;
+      if (attempt < ERP_MAX_RETRIES) {
+        await sleep(ERP_RETRY_BASE_DELAY_MS * 2 ** attempt);
+        continue;
+      }
+    }
+  }
+  throw lastError || new Error("Falha de rede ao acessar o ERP.");
+}
+
 async function fetchErpJson(baseUrl, token, requestPath, debug, step = "fetch") {
   let lastResult = null;
   for (const candidate of getAuthorizationCandidates(token)) {
-    const response = await fetch(`${baseUrl}${requestPath}`, {
+    const response = await fetchWithRetry(`${baseUrl}${requestPath}`, {
       headers: { Authorization: candidate.value, Accept: "application/json" },
     });
     if (response.status === 401) tokenCache.clear();
@@ -380,8 +415,10 @@ async function sincronizarAlterados({ empresa: empresaInput, companyName, baseUr
 
   if (todos.length === 0) return [];
 
-  // Busca preços em paralelo (max 5 simultâneos)
-  const CONCURRENCY = 5;
+  // Busca precos em paralelo com concorrencia reduzida e pausa entre lotes
+  // para nao sobrecarregar o ERP (evita picos de requisicoes simultaneas).
+  const CONCURRENCY = 2;
+  const BATCH_DELAY_MS = 300;
   const enriched = [];
   for (let i = 0; i < todos.length; i += CONCURRENCY) {
     const batch = todos.slice(i, i + CONCURRENCY);
@@ -401,6 +438,7 @@ async function sincronizarAlterados({ empresa: empresaInput, companyName, baseUr
       };
     }));
     enriched.push(...results);
+    if (i + CONCURRENCY < todos.length) await sleep(BATCH_DELAY_MS);
   }
 
   return enriched;
@@ -409,7 +447,7 @@ async function sincronizarAlterados({ empresa: empresaInput, companyName, baseUr
 async function mutateErpJson(baseUrl, token, requestPath, method, body, debug) {
   let lastResult = null;
   for (const candidate of getAuthorizationCandidates(token)) {
-    const response = await fetch(`${baseUrl}${requestPath}`, {
+    const response = await fetchWithRetry(`${baseUrl}${requestPath}`, {
       method,
       headers: {
         Authorization: candidate.value,

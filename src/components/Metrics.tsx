@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Trash2, Download, Tag, Package, Timer, Activity } from "lucide-react";
+import { Trash2, Download, Tag, Package, Timer, Activity, User } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -74,12 +74,28 @@ export function Metrics({ events, onClear }: Props) {
     return Array.from(map.values()).sort((a, b) => b.qtd - a.qtd);
   }, [filtered]);
 
+  const byUser = useMemo(() => {
+    const map = new Map<string, { usuario: string; qtd: number; vezes: number; last: number }>();
+    for (const e of filtered) {
+      const usuario = e.usuario || "padrao";
+      const cur = map.get(usuario);
+      if (cur) {
+        cur.qtd += e.quantidade;
+        cur.vezes += 1;
+        cur.last = Math.max(cur.last, e.at);
+      } else {
+        map.set(usuario, { usuario, qtd: e.quantidade, vezes: 1, last: e.at });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.qtd - a.qtd);
+  }, [filtered]);
+
   const exportCsv = () => {
-    const header = "data_iso;ean;descricao;quantidade;status;duracao_ms;preco_varejo;preco_atacado;estoque;secao;grupo;codigo_interno\n";
+    const header = "data_iso;ean;descricao;quantidade;status;duracao_ms;preco_varejo;preco_atacado;estoque;secao;grupo;codigo_interno;usuario\n";
     const rows = filtered
       .map(
         (e) =>
-          `${new Date(e.at).toISOString()};${e.ean};"${e.descricao.replace(/"/g, '""')}";${e.quantidade};${e.status || ""};${e.durationMs};${e.precoVarejo ?? ""};${e.precoAtacado ?? ""};${e.estoque ?? ""};${e.secao || ""};${e.grupo || ""};${e.codigoInterno || ""}`,
+          `${new Date(e.at).toISOString()};${e.ean};"${e.descricao.replace(/"/g, '""')}";${e.quantidade};${e.status || ""};${e.durationMs};${e.precoVarejo ?? ""};${e.precoAtacado ?? ""};${e.estoque ?? ""};${e.secao || ""};${e.grupo || ""};${e.codigoInterno || ""};${e.usuario || ""}`,
       )
       .join("\n");
     const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8" });
@@ -130,6 +146,46 @@ export function Metrics({ events, onClear }: Props) {
         <KpiCard icon={<Activity />} label="Impressões" value={totals.totalPrints.toString()} />
         <KpiCard icon={<Package />} label="Produtos únicos" value={totals.uniqueProducts.toString()} />
         <KpiCard icon={<Timer />} label="Tempo médio / etiqueta" value={fmtDuration(totals.avg)} />
+      </div>
+
+      <div className="rounded-lg border bg-card">
+        <div className="p-4 border-b">
+          <h3 className="font-semibold flex items-center gap-2"><User className="h-4 w-4" /> Produtividade por usuario</h3>
+          <p className="text-xs text-muted-foreground">
+            Etiquetas impressas por pessoa no periodo selecionado
+          </p>
+        </div>
+        <div className="max-h-[300px] overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Usuario</TableHead>
+                <TableHead className="text-right">Qtd. etiquetas</TableHead>
+                <TableHead className="text-right">Impressoes</TableHead>
+                <TableHead>Ultima impressao</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {byUser.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    Nenhuma impressao no periodo.
+                  </TableCell>
+                </TableRow>
+              )}
+              {byUser.map((u) => (
+                <TableRow key={u.usuario}>
+                  <TableCell className="font-medium">{u.usuario}</TableCell>
+                  <TableCell className="text-right font-bold">{u.qtd}</TableCell>
+                  <TableCell className="text-right">{u.vezes}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {new Date(u.last).toLocaleString("pt-BR")}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
       <div className="rounded-lg border bg-card">
