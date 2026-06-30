@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { A4Template, A4FilledBlock } from "@/types/a4";
-import { Product, VFConfig, AppUser } from "@/types/label";
+import { Product, VFConfig } from "@/types/label";
 import { a4Storage, defaultA4Templates, newA4Template } from "@/services/a4Storage";
 import { downloadA4Pdf, getA4RenderMetrics, getBlockRects, printA4Pdf, A4_WIDTH_MM, A4_HEIGHT_MM, getDynamicValue } from "@/services/a4PdfService";
 import { storage } from "@/services/storage";
@@ -29,11 +29,10 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   config: VFConfig;
-  ensureOperator: () => Promise<AppUser | null>;
-  consumeOperatorBudget: (count: number) => void;
+  ensureName: () => Promise<string | null>;
 }
 
-export function A4Module({ config, ensureOperator, consumeOperatorBudget }: Props) {
+export function A4Module({ config, ensureName }: Props) {
   const [tab, setTab] = useState<"print" | "editor">("print");
   const [templates, setTemplates] = useState<A4Template[]>(() => a4Storage.getTemplates());
   const [activeId, setActiveId] = useState<string>(() => a4Storage.getActive() || templates[0]?.id || "");
@@ -176,9 +175,8 @@ export function A4Module({ config, ensureOperator, consumeOperatorBudget }: Prop
   const handlePrint = async () => {
     if (!active || productQueue.length === 0) return toast.error("Bipe pelo menos um produto");
     const currentConfig = storage.getConfig();
-    const user = await ensureOperator();
-    if (!user) return toast.error("Selecione um usuario para imprimir");
-    const usuario = user.nome;
+    const usuario = await ensureName();
+    if (!usuario) return toast.error("Informe um nome para imprimir");
 
     const fullProducts = repeatMode
       ? Array.from({ length: blocksPerPage }, () => productQueue[0])
@@ -211,7 +209,6 @@ export function A4Module({ config, ensureOperator, consumeOperatorBudget }: Prop
           usuario,
         });
       });
-      consumeOperatorBudget(productQueue.length);
     } catch (e) {
       toast.error("Erro ao imprimir: " + (e instanceof Error ? e.message : String(e)), { id: "a4-print" });
     }

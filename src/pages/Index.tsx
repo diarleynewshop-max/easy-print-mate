@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent, PrintQueueItem, AppUser } from "@/types/label";
+import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent, PrintQueueItem } from "@/types/label";
 import { storage, defaultTemplates, ensureDefaultTemplates, restoreElginPreset } from "@/services/storage";
 import { ELGIN_PRESET_ID } from "@/services/presets";
 import { fetchProductByEan, VFError } from "@/api/varejoFacil";
@@ -14,8 +14,7 @@ import { ApiConfig } from "@/components/ApiConfig";
 import { Metrics } from "@/components/Metrics";
 import { A4Module } from "@/components/A4Module";
 import { PromoModule } from "@/components/PromoModule";
-import { OperatorLoginModal } from "@/components/OperatorLoginModal";
-import { UsersManager } from "@/components/UsersManager";
+import { NamePromptModal } from "@/components/NamePromptModal";
 import { useProductDiscovery } from "@/hooks/useProductDiscovery";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -43,13 +42,12 @@ import {
   ChevronLeft,
   ChevronRight,
   BadgePercent,
-  Users,
   UserCircle2,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type View = "scan" | "editor" | "config" | "metrics" | "a4" | "promo" | "users";
+type View = "scan" | "editor" | "config" | "metrics" | "a4" | "promo";
 
 const Index = () => {
   useProductDiscovery();
@@ -82,11 +80,9 @@ const Index = () => {
   });
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [operator, setOperator] = useState<AppUser | null>(null);
-  const [operatorBudget, setOperatorBudget] = useState(0);
-  const [operatorUsed, setOperatorUsed] = useState(0);
-  const [operatorLoginOpen, setOperatorLoginOpen] = useState(false);
-  const operatorResolveRef = useRef<((user: AppUser | null) => void) | null>(null);
+  const [printName, setPrintName] = useState<string | null>(null);
+  const [namePromptOpen, setNamePromptOpen] = useState(false);
+  const nameResolveRef = useRef<((name: string | null) => void) | null>(null);
 
   const activeTemplate = useMemo(
     () => templates.find((t) => t.id === activeTemplateId) || templates[0],
@@ -228,7 +224,7 @@ const Index = () => {
     }
   };
 
-  const recordEvent = (p: Product, qty: number, status: "success" | "error", usuario = "padrao") => {
+  const recordEvent = (p: Product, qty: number, status: "success" | "error", usuario = printName || "padrao") => {
     const now = Date.now();
     const evt: PrintEvent = {
       ean: p.ean,
@@ -251,46 +247,30 @@ const Index = () => {
     lastActionRef.current = now;
   };
 
-  const ensureOperator = (): Promise<AppUser | null> => {
-    if (operator && operatorUsed < operatorBudget) return Promise.resolve(operator);
-    setOperator(null);
-    setOperatorLoginOpen(true);
+  const ensureName = (): Promise<string | null> => {
+    if (printName) return Promise.resolve(printName);
+    setNamePromptOpen(true);
     return new Promise((resolve) => {
-      operatorResolveRef.current = resolve;
+      nameResolveRef.current = resolve;
     });
   };
 
-  const consumeOperatorBudget = (count: number) => {
-    setOperatorUsed((prev) => {
-      const next = prev + count;
-      if (next >= operatorBudget) {
-        setOperator(null);
-        setOperatorBudget(0);
-      }
-      return next;
-    });
+  const handleNameConfirm = (name: string) => {
+    setPrintName(name);
+    setNamePromptOpen(false);
+    nameResolveRef.current?.(name);
+    nameResolveRef.current = null;
   };
 
-  const handleOperatorAuth = (user: AppUser, budget: number) => {
-    setOperator(user);
-    setOperatorBudget(budget);
-    setOperatorUsed(0);
-    setOperatorLoginOpen(false);
-    operatorResolveRef.current?.(user);
-    operatorResolveRef.current = null;
+  const handleNameCancel = () => {
+    setNamePromptOpen(false);
+    nameResolveRef.current?.(null);
+    nameResolveRef.current = null;
   };
 
-  const handleOperatorCancel = () => {
-    setOperatorLoginOpen(false);
-    operatorResolveRef.current?.(null);
-    operatorResolveRef.current = null;
-  };
-
-  const handleSwitchOperator = () => {
-    setOperator(null);
-    setOperatorBudget(0);
-    setOperatorUsed(0);
-    setOperatorLoginOpen(true);
+  const handleSwitchName = () => {
+    setPrintName(null);
+    setNamePromptOpen(true);
   };
 
   const sendRaw = async (content: string, label: string) => {
@@ -311,12 +291,11 @@ const Index = () => {
     if (!product) return toast.error("Nenhum produto selecionado");
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
     if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
-    const user = await ensureOperator();
-    if (!user) return toast.error("Selecione um usuario para imprimir");
+    const name = await ensureName();
+    if (!name) return toast.error("Informe um nome para imprimir");
     const ok = await sendRaw(buildEplPrn(activeTemplate, product, copies), `${copies} etiqueta(s)`);
-    recordEvent(product, copies, ok ? "success" : "error", user.nome);
+    recordEvent(product, copies, ok ? "success" : "error", name);
     if (ok) {
-      consumeOperatorBudget(1);
       lastPrintedRef.current = product;
       setTimeout(() => {
         setCode("");
@@ -364,12 +343,11 @@ const Index = () => {
     if (!printQueue.length) return toast.error("Fila vazia");
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
     if (hasErrors) return toast.error("Corrija o modelo antes de imprimir");
-    const user = await ensureOperator();
-    if (!user) return toast.error("Selecione um usuario para imprimir");
+    const name = await ensureName();
+    if (!name) return toast.error("Informe um nome para imprimir");
     const ok = await sendRaw(buildEplBatchPrn(activeTemplate, printQueue), `Fila com ${queueTotal} etiqueta(s)`);
-    printQueue.forEach((item) => recordEvent(item.product, item.quantity, ok ? "success" : "error", user.nome));
+    printQueue.forEach((item) => recordEvent(item.product, item.quantity, ok ? "success" : "error", name));
     if (ok) {
-      consumeOperatorBudget(printQueue.length);
       lastPrintedRef.current = printQueue[printQueue.length - 1]?.product || null;
       setPrintQueue([]);
       setCode("");
@@ -381,11 +359,10 @@ const Index = () => {
     const p = lastPrintedRef.current;
     if (!p) return toast.error("Nenhuma impressao anterior");
     if (printerStatus !== "online") return toast.error("Servidor de impressao offline");
-    const user = await ensureOperator();
-    if (!user) return toast.error("Selecione um usuario para imprimir");
+    const name = await ensureName();
+    if (!name) return toast.error("Informe um nome para imprimir");
     const ok = await sendRaw(buildEplPrn(activeTemplate, p, copies), "Reimpressao");
-    recordEvent(p, copies, ok ? "success" : "error", user.nome);
-    if (ok) consumeOperatorBudget(1);
+    recordEvent(p, copies, ok ? "success" : "error", name);
   };
 
   const handleTestPrint = async () => {
@@ -505,7 +482,6 @@ const Index = () => {
           <NavBtn icon={<FileText />} label="Etiquetas A4 / PDF" active={view === "a4"} onClick={() => setView("a4")} collapsed={sidebarCollapsed} />
           <NavBtn icon={<BadgePercent />} label="Item em Promoção" active={view === "promo"} onClick={() => setView("promo")} collapsed={sidebarCollapsed} />
           <NavBtn icon={<BarChart3 />} label="Metricas" active={view === "metrics"} onClick={() => setView("metrics")} collapsed={sidebarCollapsed} />
-          <NavBtn icon={<Users />} label="Usuarios" active={view === "users"} onClick={() => setView("users")} collapsed={sidebarCollapsed} />
           <NavBtn icon={<Settings />} label="Configuracao API" active={view === "config"} onClick={() => setView("config")} collapsed={sidebarCollapsed} />
         </nav>
 
@@ -515,13 +491,13 @@ const Index = () => {
               <div className="flex items-center gap-1.5 min-w-0">
                 <UserCircle2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
                 <span className="text-xs truncate">
-                  {operator ? `${operator.nome} (${Math.max(0, operatorBudget - operatorUsed)} restantes)` : "Sem operador"}
+                  {printName || "Sem nome"}
                 </span>
               </div>
               <button
-                onClick={handleSwitchOperator}
+                onClick={handleSwitchName}
                 className="shrink-0 rounded-md p-1 hover:bg-sidebar-accent transition-colors"
-                title="Trocar usuario"
+                title="Trocar nome"
               >
                 <LogOut className="h-3.5 w-3.5" />
               </button>
@@ -957,7 +933,7 @@ const Index = () => {
 
         {view === "a4" && (
           <div className="flex-1 overflow-hidden no-print">
-            <A4Module config={config} ensureOperator={ensureOperator} consumeOperatorBudget={consumeOperatorBudget} />
+            <A4Module config={config} ensureName={ensureName} />
           </div>
         )}
 
@@ -967,18 +943,12 @@ const Index = () => {
           </div>
         )}
 
-        {view === "users" && (
-          <div className="flex-1 p-6 overflow-auto no-print">
-            <h2 className="text-xl font-bold mb-4">Usuarios</h2>
-            <UsersManager operator={operator} />
-          </div>
-        )}
       </main>
 
-      <OperatorLoginModal
-        open={operatorLoginOpen}
-        onAuth={handleOperatorAuth}
-        onCancel={handleOperatorCancel}
+      <NamePromptModal
+        open={namePromptOpen}
+        onConfirm={handleNameConfirm}
+        onCancel={handleNameCancel}
       />
     </div>
   );

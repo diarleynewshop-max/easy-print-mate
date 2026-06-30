@@ -75,6 +75,29 @@ function textFont(field: LabelField) {
   return { font: 1, h: 1, w: 1, charWidth: 8 };
 }
 
+// Altura aproximada (mm) de cada fonte interna EPL a 203 dpi. Usada para
+// garantir que o texto nao seja empurrado para a base nao-imprimivel.
+const FONT_HEIGHT_MM: Record<number, number> = { 1: 1.5, 2: 2, 3: 2.5, 4: 3, 5: 6 };
+
+function fontHeightDots(font: number, template: LabelTemplate) {
+  return mmToDots(FONT_HEIGHT_MM[font] ?? 3, template);
+}
+
+// Toda impressora termica tem uma faixa nao-imprimivel no fim de cada etiqueta
+// (a "zona morta" antes do gap). Garantimos pelo menos 1mm livre na base e
+// nunca deixamos um elemento ultrapassar essa borda: se passar, ele e puxado
+// para cima ate caber. Assim o preco (ou qualquer campo) nunca mais cai no
+// espaco entre etiquetas, em qualquer modelo.
+function clampToPrintableArea(template: LabelTemplate, y: number, elementHeightDots: number) {
+  const marginTopMm = template.marginTopMm ?? 0;
+  const safeBottomMm = Math.max(template.safePaddingBottomMm ?? 0, 1);
+  const topDots = mmToDots(marginTopMm, template);
+  const bottomDots = mmToDots(marginTopMm + template.heightMm - safeBottomMm, template);
+  const maxY = bottomDots - elementHeightDots;
+  if (maxY <= topDots) return Math.max(0, topDots);
+  return Math.max(topDots, Math.min(y, maxY));
+}
+
 function getAdjustedX(template: LabelTemplate, field: LabelField, x: number, text: string, charWidth: number) {
   if (field.align !== "center" && field.align !== "right") return x;
   const dotsPerMm = getDotsPerMm(template);
@@ -162,11 +185,14 @@ function appendProductFields(lines: string[], template: LabelTemplate, product: 
         const hasText = field.barcodeDisplayValue !== false;
         const textHeightDots = hasText ? mmToDots(1.6, template) : 0;
         const actualBarcodeHeightDots = Math.max(12, totalHeightDots - textHeightDots);
-        
-        lines.push(`B${baseX},${y},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${actualBarcodeHeightDots},N,"${barcode}"`);
-        
+        const gapDots = hasText ? mmToDots(0.2, template) : 0;
+        const elementHeightDots = actualBarcodeHeightDots + gapDots + textHeightDots;
+        const clampedY = clampToPrintableArea(template, y, elementHeightDots);
+
+        lines.push(`B${baseX},${clampedY},${rotation},${eplBarcodeType(field, barcode)},${narrow},${wide},${actualBarcodeHeightDots},N,"${barcode}"`);
+
         if (hasText) {
-          const textY = y + actualBarcodeHeightDots + mmToDots(0.2, template);
+          const textY = clampedY + actualBarcodeHeightDots + gapDots;
           const { font, h, w, charWidth } = { font: 1, h: 1, w: 1, charWidth: 8 };
           const textX = getAdjustedX(template, field, baseX, barcode, charWidth);
           lines.push(`A${textX},${textY},${rotation},${font},${h},${w},N,"${barcode}"`);
@@ -177,8 +203,9 @@ function appendProductFields(lines: string[], template: LabelTemplate, product: 
       const value = cleanText(fieldValue(field, product));
       if (!value) return;
       const { font, h, w, charWidth } = textFont(field);
+      const clampedY = clampToPrintableArea(template, y, fontHeightDots(font, template));
       const x = getAdjustedX(template, field, baseX, value, charWidth);
-      lines.push(`A${x},${y},${rotation},${font},${h},${w},N,"${value}"`);
+      lines.push(`A${x},${clampedY},${rotation},${font},${h},${w},N,"${value}"`);
     });
 }
 

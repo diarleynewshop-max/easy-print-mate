@@ -1,4 +1,4 @@
-import { LabelTemplate, VFConfig, HistoryEntry, PrintEvent, AppUser } from "@/types/label";
+import { LabelTemplate, VFConfig, HistoryEntry, PrintEvent } from "@/types/label";
 import { elginPreset, ELGIN_PRESET_ID, anelPreset, ANEL_PRESET_ID, amarelaPreset, AMARELA_PRESET_ID } from "./presets";
 
 const K = {
@@ -7,7 +7,7 @@ const K = {
   config: "vf_api_config",
   history: "vf_history",
   prints: "vf_print_events",
-  users: "vf_app_users",
+  names: "vf_print_names",
 };
 
 const memoryStore: Record<string, string> = {};
@@ -144,16 +144,33 @@ export const storage = {
   clearPrintEvents() {
     removeLocal(K.prints);
   },
-  getUsers(): AppUser[] {
+  getNames(): string[] {
     try {
-      const raw = readLocal(K.users);
-      return raw ? JSON.parse(raw) : [];
+      const raw = readLocal(K.names);
+      const list = raw ? (JSON.parse(raw) as unknown) : [];
+      return Array.isArray(list) ? list.filter((n): n is string => typeof n === "string" && n.trim().length > 0) : [];
     } catch {
       return [];
     }
   },
-  saveUsers(users: AppUser[]) {
-    writeLocal(K.users, JSON.stringify(users));
+  saveNames(names: string[]) {
+    const unique = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
+    writeLocal(K.names, JSON.stringify(unique));
+  },
+  addName(name: string) {
+    const clean = name.trim();
+    if (!clean) return storage.getNames();
+    const list = storage.getNames();
+    // Evita duplicado ignorando maiusculas/minusculas, mantendo o mais recente no topo
+    const filtered = list.filter((n) => n.toLowerCase() !== clean.toLowerCase());
+    const next = [clean, ...filtered].slice(0, 50);
+    storage.saveNames(next);
+    return next;
+  },
+  removeName(name: string) {
+    const next = storage.getNames().filter((n) => n.toLowerCase() !== name.trim().toLowerCase());
+    storage.saveNames(next);
+    return next;
   },
 };
 
