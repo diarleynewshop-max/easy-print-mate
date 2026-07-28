@@ -78,8 +78,6 @@ const ERP_LOJA_BY_EMPRESA: Record<EmpresaKey, number> = {
   SOYE: 1,
 };
 
-const ERP_EMPRESAS: EmpresaKey[] = ["NEWSHOP", "FACIL", "SOYE"];
-
 const tokenCache = new Map<string, string>();
 const tokenSourceCache = new Map<string, string>();
 
@@ -88,14 +86,23 @@ function getSingle(value: string | string[] | undefined): string {
 }
 
 function normalizeEmpresa(value: string | string[] | undefined): EmpresaKey {
-  const normalized = getSingle(value).trim().toUpperCase();
+  const normalized = getSingle(value)
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
   if (normalized.includes("SOYE")) return "SOYE";
   if (normalized.includes("FACIL")) return "FACIL";
   return "NEWSHOP";
 }
 
-function getEmpresasFallback(empresa: EmpresaKey): EmpresaKey[] {
-  return [empresa, ...ERP_EMPRESAS.filter((item) => item !== empresa)];
+function resolveLojaId(empresa: EmpresaKey, loja?: number | string | string[]): number {
+  const lojaMapeada = ERP_LOJA_BY_EMPRESA[empresa];
+  if (Number.isFinite(lojaMapeada)) return Number(lojaMapeada);
+
+  const lojaParam = String(Array.isArray(loja) ? loja[0] ?? "" : loja || "").trim() || getEnv(empresa, "LOJA_ID");
+  const lojaId = lojaParam ? Number(lojaParam) : undefined;
+  return Number.isFinite(lojaId) ? lojaId : 1;
 }
 
 function getEnv(empresa: EmpresaKey, key: "URL" | "USERNAME" | "PASSWORD" | "TOKEN" | "LOJA_ID"): string {
@@ -314,7 +321,7 @@ function produtoBasico(produto: ErpProduto, eanFallback = "") {
 }
 
 function getErpLojaAtiva(empresa: EmpresaKey, lojaId?: number): number {
-  return Number.isFinite(lojaId) ? Number(lojaId) : ERP_LOJA_BY_EMPRESA[empresa] || 1;
+  return resolveLojaId(empresa, lojaId);
 }
 
 function getItems<T>(data: unknown): T[] {
@@ -654,7 +661,7 @@ async function consultarPrecoProdutoVarejoFacil(
     }
 
     debug.push({ step: "produto-nao-encontrado", path: "-", found: false, message: `codigo=${codigo}` });
-    const error = new Error(`Produto nao encontrado para o codigo ${codigo}`);
+    const error = new Error(`Produto nao encontrado na ${empresa} para o codigo ${codigo}`);
     (error as Error & { status?: number }).status = 404;
     throw error;
   }
@@ -662,73 +669,6 @@ async function consultarPrecoProdutoVarejoFacil(
   debug.push({ step: "produto-encontrado", path: "-", found: true, message: `produtoId=${produto.id}` });
 
   return montarProdutoCompleto(baseUrl, token, empresa, produto, eanResolvido, lojaId, debug);
-}
-
-async function consultarPrecoProdutoTodasEmpresas(
-  empresaInicial: EmpresaKey,
-  codigo: string,
-  lojaId: number | undefined,
-  debug: DebugStep[]
-) {
-  let lastError: Error & { status?: number } | null = null;
-
-  for (const empresa of getEmpresasFallback(empresaInicial)) {
-    try {
-      const baseUrl = resolveBaseUrl(empresa);
-      const token = await getAccessToken(empresa, baseUrl);
-      const product = await consultarPrecoProdutoVarejoFacil(baseUrl, token, empresa, codigo, lojaId, debug);
-      if (empresa !== empresaInicial) {
-        debug.push({ step: "fallback-empresa", path: "/api/varejo-facil", found: true, message: `produto encontrado em ${empresa} apos falhar em ${empresaInicial}` });
-      }
-      return { product, empresa };
-    } catch (error) {
-      lastError = error as Error & { status?: number };
-      debug.push({
-        step: "fallback-empresa-falhou",
-        path: "/api/varejo-facil",
-        status: lastError.status,
-        message: `empresa=${empresa}; ${lastError.message || "falha desconhecida"}`,
-      });
-      if (lastError.status === 401 && empresa === empresaInicial) break;
-    }
-  }
-
-  const error = new Error(`Produto nao encontrado para o codigo ${codigo} nas bases ${getEmpresasFallback(empresaInicial).join(", ")}`);
-  (error as Error & { status?: number }).status = lastError?.status === 401 ? 401 : 404;
-  throw error;
-}
-
-async function buscarProdutosPorTermoTodasEmpresas(
-  empresaInicial: EmpresaKey,
-  search: string,
-  limit: number,
-  debug: DebugStep[]
-) {
-  const itemsByKey = new Map<string, ReturnType<typeof produtoBasico> & { empresa?: EmpresaKey }>();
-
-  for (const empresa of getEmpresasFallback(empresaInicial)) {
-    if (itemsByKey.size >= limit) break;
-    try {
-      const baseUrl = resolveBaseUrl(empresa);
-      const token = await getAccessToken(empresa, baseUrl);
-      const items = await buscarProdutosPorTermo(baseUrl, token, search, limit - itemsByKey.size, debug);
-      for (const item of items) {
-        const key = `${empresa}:${item.id || item.ean || item.codigoInterno || item.descricao}`;
-        if (!itemsByKey.has(key)) itemsByKey.set(key, { ...item, empresa });
-      }
-    } catch (error) {
-      const err = error as Error & { status?: number };
-      debug.push({
-        step: "fallback-search-empresa-falhou",
-        path: "/api/varejo-facil",
-        status: err.status,
-        message: `empresa=${empresa}; ${err.message || "falha desconhecida"}`,
-      });
-      if (err.status === 401 && empresa === empresaInicial) break;
-    }
-  }
-
-  return Array.from(itemsByKey.values()).slice(0, limit);
 }
 
 export default async function handler(
@@ -749,13 +689,12 @@ export default async function handler(
 
   const empresa = normalizeEmpresa(req.query.empresa);
   const baseUrl = resolveBaseUrl(empresa);
-  const lojaParam = getSingle(req.query.loja).trim() || getEnv(empresa, "LOJA_ID");
-  const lojaId = lojaParam ? Number(lojaParam) : undefined;
+  const lojaId = resolveLojaId(empresa, req.query.loja);
   const debug: DebugStep[] = [
     {
       step: "entrada",
       path: "/api/varejo-facil",
-      message: `empresa=${empresa}; codigo=${codigo || "-"}; produtoId=${produtoId || "-"}; search=${search || "-"}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}`,
+      message: `empresa=${empresa}; codigo=${codigo || "-"}; produtoId=${produtoId || "-"}; search=${search || "-"}; loja=${lojaId}; base=${baseUrl}`,
     },
   ];
 
@@ -770,18 +709,36 @@ export default async function handler(
         found: true,
         message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}`,
       });
-      const product = await buscarProdutoCompletoPorId(baseUrl, token, empresa, produtoId, Number.isFinite(lojaId) ? lojaId : undefined, debug);
-      return res.status(200).json({ product, empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null, debug });
+      const product = await buscarProdutoCompletoPorId(baseUrl, token, empresa, produtoId, lojaId, debug);
+      return res.status(200).json({ product, empresa, lojaId, debug });
     }
 
     if (search) {
-      const items = await buscarProdutosPorTermoTodasEmpresas(empresa, search, limit, debug);
-      return res.status(200).json({ items, empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null, debug });
+      const token = await getAccessToken(empresa, baseUrl);
+      const username = getEnv(empresa, "USERNAME");
+      const cacheKey = `${empresa}:${baseUrl}:${username}`;
+      debug.push({
+        step: "auth",
+        path: `${baseUrl}/auth`,
+        found: true,
+        message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}`,
+      });
+      const items = await buscarProdutosPorTermo(baseUrl, token, search, limit, debug);
+      return res.status(200).json({ items: items.map((item) => ({ ...item, empresa })), empresa, lojaId, debug });
     }
 
-    const result = await consultarPrecoProdutoTodasEmpresas(empresa, codigo, Number.isFinite(lojaId) ? lojaId : undefined, debug);
-    console.info("[varejo-facil] produto resolvido", { empresa: result.empresa, codigo, produtoId: result.product.id, steps: debug });
-    return res.status(200).json({ product: result.product, empresa: result.empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null, debug });
+    const token = await getAccessToken(empresa, baseUrl);
+    const username = getEnv(empresa, "USERNAME");
+    const cacheKey = `${empresa}:${baseUrl}:${username}`;
+    debug.push({
+      step: "auth",
+      path: `${baseUrl}/auth`,
+      found: true,
+      message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}`,
+    });
+    const product = await consultarPrecoProdutoVarejoFacil(baseUrl, token, empresa, codigo, lojaId, debug);
+    console.info("[varejo-facil] produto resolvido", { empresa, codigo, produtoId: product.id, steps: debug });
+    return res.status(200).json({ product, empresa, lojaId, debug });
   } catch (error) {
     const status = (error as Error & { status?: number }).status || 500;
     const message = error instanceof Error ? error.message : "Erro desconhecido";

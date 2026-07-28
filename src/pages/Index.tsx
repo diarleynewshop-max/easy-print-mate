@@ -747,9 +747,14 @@ const Index = () => {
                   <div className="space-y-2">
                     <div className="text-destructive text-sm font-medium">{error}</div>
                     {errorDebug ? (
-                      <pre className="max-h-40 overflow-auto rounded-md bg-muted p-2 text-[10px] text-muted-foreground whitespace-pre-wrap">
-                        {JSON.stringify(errorDebug, null, 2)}
-                      </pre>
+                      <details className="rounded-md border bg-muted/60 px-3 py-2 text-[11px] text-muted-foreground">
+                        <summary className="cursor-pointer select-none font-medium">
+                          Detalhes tecnicos
+                        </summary>
+                        <pre className="mt-2 max-h-40 overflow-auto text-[10px] whitespace-pre-wrap">
+                          {JSON.stringify(errorDebug, null, 2)}
+                        </pre>
+                      </details>
                     ) : null}
                   </div>
                 )}

@@ -13,8 +13,6 @@ const ERP_LOJA_BY_EMPRESA = {
   SOYE: 1,
 };
 
-const ERP_EMPRESAS = ["NEWSHOP", "FACIL", "SOYE"];
-
 const tokenCache = new Map();
 const tokenSourceCache = new Map();
 
@@ -39,29 +37,25 @@ function loadErpEnv(dataDir) {
 }
 
 function normalizeEmpresa(value) {
-  const normalized = String(value || "").trim().toUpperCase();
-  if (!normalized) return "NEWSHOP";
-  return normalized.replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "NEWSHOP";
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (!raw) return "NEWSHOP";
+  if (raw.includes("SOYE")) return "SOYE";
+  if (raw.includes("FACIL")) return "FACIL";
+  if (raw.includes("NEWSHOP") || raw.includes("NEW SHOP")) return "NEWSHOP";
+  return raw.replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "NEWSHOP";
 }
 
-function getEmpresasFallback(empresa) {
-  const primary = normalizeEmpresa(empresa);
-  return [primary, ...ERP_EMPRESAS.filter((item) => item !== primary)];
-}
+function resolveLojaId(empresa, loja) {
+  const lojaMapeada = ERP_LOJA_BY_EMPRESA[empresa];
+  if (Number.isFinite(lojaMapeada)) return Number(lojaMapeada);
 
-function configuredBaseMatchesEmpresa(empresa, configuredBaseUrl) {
-  if (!configuredBaseUrl || !HOSTS[empresa]) return false;
-  return String(configuredBaseUrl).toLowerCase().includes(HOSTS[empresa].toLowerCase());
-}
-
-function paramsForEmpresa(params, targetEmpresa, primaryEmpresa) {
-  const useConfiguredBase = targetEmpresa === primaryEmpresa || configuredBaseMatchesEmpresa(targetEmpresa, params.baseUrl);
-  return {
-    ...params,
-    empresa: targetEmpresa,
-    companyName: targetEmpresa,
-    baseUrl: useConfiguredBase ? params.baseUrl : "",
-  };
+  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
+  const lojaId = lojaParam ? Number(lojaParam) : undefined;
+  return Number.isFinite(lojaId) ? lojaId : undefined;
 }
 
 function getEnv(empresa, key) {
@@ -364,7 +358,7 @@ async function buscarGrupo(baseUrl, token, secaoId, grupoId, debug) {
 
 async function montarProdutoCompleto(baseUrl, token, empresa, produto, eanResolvido, lojaId, debug) {
   const produtoId = String(produto.id);
-  const lojaAtiva = Number.isFinite(lojaId) ? Number(lojaId) : ERP_LOJA_BY_EMPRESA[empresa] || 1;
+  const lojaAtiva = resolveLojaId(empresa, lojaId) || 1;
   const [precos, estoque, secao, grupo] = await Promise.all([
     buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch(() => ({ precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 })),
     buscarEstoque(baseUrl, token, produtoId, lojaAtiva, debug).catch(() => undefined),
@@ -458,8 +452,7 @@ async function buscarProdutosPorTermo(baseUrl, token, termo, limit, debug) {
 async function consultarProdutoEmpresa({ codigo, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
-  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
-  const lojaId = lojaParam ? Number(lojaParam) : undefined;
+  const lojaId = resolveLojaId(empresa, loja);
   const debug = [{ step: "entrada", path: "electron:varejo-facil", message: `empresa=${empresa}; codigo=${codigo}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}` }];
 
   const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
@@ -498,7 +491,7 @@ async function consultarProdutoEmpresa({ codigo, empresa: empresaInput, companyN
   }
 
   if (!produto?.id) {
-    const error = new Error(debug.some((step) => step.status === 401) ? "ERP recusou o Authorization. Verifique token, usuario ou senha." : `Produto nao encontrado para o codigo ${codigo}`);
+    const error = new Error(debug.some((step) => step.status === 401) ? "ERP recusou o Authorization. Verifique token, usuario ou senha." : `Produto nao encontrado na ${empresa} para o codigo ${codigo}`);
     error.status = debug.some((step) => step.status === 401) ? 401 : 404;
     error.debug = debug;
     throw error;
@@ -518,44 +511,13 @@ async function consultarProdutoEmpresa({ codigo, empresa: empresaInput, companyN
 }
 
 async function consultarProduto(params) {
-  const primary = normalizeEmpresa(params.companyName || params.empresa);
-  const allDebug = [];
-  let lastError = null;
-
-  for (const empresa of getEmpresasFallback(primary)) {
-    try {
-      const result = await consultarProdutoEmpresa(paramsForEmpresa(params, empresa, primary));
-      if (empresa !== primary) {
-        result.debug.unshift({ step: "fallback-empresa", path: "electron:varejo-facil", found: true, message: `produto encontrado em ${empresa} apos falhar em ${primary}` });
-      }
-      return result;
-    } catch (error) {
-      lastError = error;
-      const errDebug = Array.isArray(error?.debug) ? error.debug : [];
-      allDebug.push(...errDebug);
-      allDebug.push({
-        step: "fallback-empresa-falhou",
-        path: "electron:varejo-facil",
-        status: error?.status,
-        message: `empresa=${empresa}; ${error?.message || "falha desconhecida"}`,
-      });
-
-      if (error?.status === 401 && empresa === primary) break;
-      if (error?.status && ![404, 409].includes(error.status)) continue;
-    }
-  }
-
-  const error = new Error(`Produto nao encontrado para o codigo ${params.codigo} nas bases ${getEmpresasFallback(primary).join(", ")}`);
-  error.status = lastError?.status === 401 ? 401 : 404;
-  error.debug = allDebug.length ? allDebug : lastError?.debug;
-  throw error;
+  return consultarProdutoEmpresa(params);
 }
 
 async function consultarProdutoPorId({ produtoId, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
-  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
-  const lojaId = lojaParam ? Number(lojaParam) : undefined;
+  const lojaId = resolveLojaId(empresa, loja);
   const debug = [{ step: "entrada-id", path: "electron:varejo-facil", message: `empresa=${empresa}; produtoId=${produtoId}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}` }];
 
   const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
@@ -578,8 +540,7 @@ async function pesquisarProdutosEmpresa({ search, empresa: empresaInput, company
 
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
-  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
-  const lojaId = lojaParam ? Number(lojaParam) : undefined;
+  const lojaId = resolveLojaId(empresa, loja);
   const debug = [{ step: "entrada-search", path: "electron:varejo-facil", message: `empresa=${empresa}; search=${termo}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}` }];
 
   const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
@@ -589,7 +550,7 @@ async function pesquisarProdutosEmpresa({ search, empresa: empresaInput, company
 
   const items = await buscarProdutosPorTermo(baseUrl, token, termo, Math.max(1, Math.min(50, Number(limit) || 20)), debug);
   return {
-    items,
+    items: items.map((item) => ({ ...item, empresa })),
     empresa,
     lojaId: Number.isFinite(lojaId) ? lojaId : null,
     debug,
@@ -600,40 +561,8 @@ async function pesquisarProdutos(params) {
   const termo = sanitizeSearchTerm(params.search);
   if (!termo) return { items: [], debug: [] };
 
-  const primary = normalizeEmpresa(params.companyName || params.empresa);
   const limit = Math.max(1, Math.min(50, Number(params.limit) || 20));
-  const itemsByKey = new Map();
-  const allDebug = [];
-  let foundEmpresa = primary;
-
-  for (const empresa of getEmpresasFallback(primary)) {
-    if (itemsByKey.size >= limit) break;
-    try {
-      const result = await pesquisarProdutosEmpresa(paramsForEmpresa({ ...params, limit: limit - itemsByKey.size }, empresa, primary));
-      foundEmpresa = itemsByKey.size === 0 && result.items.length > 0 ? empresa : foundEmpresa;
-      allDebug.push(...(result.debug || []));
-      for (const item of result.items || []) {
-        const key = `${empresa}:${item.id || item.ean || item.codigoInterno || item.descricao}`;
-        if (!itemsByKey.has(key)) itemsByKey.set(key, { ...item, empresa });
-      }
-    } catch (error) {
-      allDebug.push(...(Array.isArray(error?.debug) ? error.debug : []));
-      allDebug.push({
-        step: "fallback-search-empresa-falhou",
-        path: "electron:varejo-facil",
-        status: error?.status,
-        message: `empresa=${empresa}; ${error?.message || "falha desconhecida"}`,
-      });
-      if (error?.status === 401 && empresa === primary) break;
-    }
-  }
-
-  return {
-    items: Array.from(itemsByKey.values()).slice(0, limit),
-    empresa: foundEmpresa,
-    lojaId: null,
-    debug: allDebug,
-  };
+  return pesquisarProdutosEmpresa({ ...params, limit });
 }
 
 async function listarProdutosPaginado({ empresa: empresaInput, companyName, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword, pagina = 1, quantidade = 100, dataAlteracao }) {
@@ -677,8 +606,7 @@ async function sincronizarAlterados({ empresa: empresaInput, companyName, baseUr
 
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
-  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
-  const lojaId = lojaParam ? Number(lojaParam) : (ERP_LOJA_BY_EMPRESA[empresa] || 1);
+  const lojaId = resolveLojaId(empresa, loja) || 1;
   const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
 
   // Coleta todos os produtos alterados (paginado)
@@ -763,8 +691,7 @@ async function mutateErpJson(baseUrl, token, requestPath, method, body, debug) {
 async function atualizarPrecoOferta({ empresa: empresaInput, companyName, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword, loja, produtoId, precoOferta }) {
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
-  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
-  const lojaId = lojaParam ? Number(lojaParam) : (ERP_LOJA_BY_EMPRESA[empresa] || 1);
+  const lojaId = resolveLojaId(empresa, loja) || 1;
   const debug = [{ step: "entrada-update", message: `empresa=${empresa}; produtoId=${produtoId}; lojaId=${lojaId}; precoOferta=${precoOferta}` }];
 
   const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
