@@ -544,10 +544,10 @@ ipcMain.handle("db:sync-products", (_event, products) => {
     for (const item of items) {
       insert.run({
         id: String(item.id),
-        ean: String(item.ean || ""),
-        codigo_barras: String(item.codigo_barras || ""),
+        ean: String(item.ean || item.codigo_barras || item.codigoInterno || item.id || ""),
+        codigo_barras: String(item.codigo_barras || item.ean || item.codigoInterno || item.id || ""),
         descricao: String(item.descricao || ""),
-        codigo_interno: String(item.codigoInterno || ""),
+        codigo_interno: String(item.codigoInterno || item.id || ""),
         secao: String(item.secao || ""),
         grupo: String(item.grupo || ""),
         preco_varejo: Number(item.precoVarejo || 0),
@@ -568,10 +568,10 @@ ipcMain.handle("db:search-products", (_event, query) => {
   const q = `%${query}%`;
   const stmt = db.prepare(`
     SELECT * FROM produtos 
-    WHERE descricao LIKE ? OR ean LIKE ? OR codigo_interno LIKE ?
+    WHERE id LIKE ? OR descricao LIKE ? OR ean LIKE ? OR codigo_barras LIKE ? OR codigo_interno LIKE ?
     LIMIT 50
   `);
-  const rows = stmt.all(q, q, q);
+  const rows = stmt.all(q, q, q, q, q);
   return rows.map(row => ({
     id: row.id,
     ean: row.ean,

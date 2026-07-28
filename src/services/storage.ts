@@ -8,6 +8,7 @@ const K = {
   history: "vf_history",
   prints: "vf_print_events",
   names: "vf_print_names",
+  aliases: "vf_code_aliases",
 };
 
 const memoryStore: Record<string, string> = {};
@@ -43,6 +44,10 @@ function removeLocal(key: string) {
     return;
   }
   localStorage.removeItem(key);
+}
+
+function normalizeCode(value: string) {
+  return value.trim().toUpperCase();
 }
 
 export async function loadLocalData() {
@@ -171,6 +176,41 @@ export const storage = {
     const next = storage.getNames().filter((n) => n.toLowerCase() !== name.trim().toLowerCase());
     storage.saveNames(next);
     return next;
+  },
+  getCodeAliases(): Record<string, string> {
+    try {
+      const raw = readLocal(K.aliases);
+      const parsed = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+      const aliases: Record<string, string> = {};
+      for (const [source, target] of Object.entries(parsed)) {
+        const cleanSource = normalizeCode(source);
+        const cleanTarget = typeof target === "string" ? target.trim() : "";
+        if (cleanSource && cleanTarget) aliases[cleanSource] = cleanTarget;
+      }
+      return aliases;
+    } catch {
+      return {};
+    }
+  },
+  resolveCodeAlias(code: string): string | null {
+    const key = normalizeCode(code);
+    if (!key) return null;
+    return storage.getCodeAliases()[key] || null;
+  },
+  saveCodeAlias(sourceCode: string, targetCode: string) {
+    const source = normalizeCode(sourceCode);
+    const target = targetCode.trim();
+    if (!source || !target) return;
+    const aliases = storage.getCodeAliases();
+    aliases[source] = target;
+    writeLocal(K.aliases, JSON.stringify(aliases));
+  },
+  removeCodeAlias(sourceCode: string) {
+    const source = normalizeCode(sourceCode);
+    if (!source) return;
+    const aliases = storage.getCodeAliases();
+    delete aliases[source];
+    writeLocal(K.aliases, JSON.stringify(aliases));
   },
 };
 

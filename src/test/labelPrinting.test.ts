@@ -23,6 +23,21 @@ describe("label printing", () => {
     expect(prn).not.toContain(",E30,");
   });
 
+  it("prints short numeric internal codes as Code128", () => {
+    const prn = buildEplPrn(elginPreset(), {
+      id: "17838",
+      ean: "17838",
+      codigo_barras: "17838",
+      codigoInterno: "17838",
+      descricao: "C895 - G BOLSA DE POLIURETANO",
+      precoVarejo: 34,
+    }, 1);
+
+    expect(prn).toContain('"17838"');
+    expect(prn).toMatch(/B\d+,\d+,0,1,/);
+    expect(prn).not.toContain(",E30,");
+  });
+
   it("repairs old ring label preset calibration", () => {
     const oldRingPreset = {
       ...anelPreset(),

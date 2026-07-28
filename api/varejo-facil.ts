@@ -307,13 +307,14 @@ function extrairImagemProduto(produto: ErpProduto): string | undefined {
 }
 
 function produtoBasico(produto: ErpProduto, eanFallback = "") {
-  const codigo = String(produto.gtin || produto.codigoBarras || eanFallback || produto.codigoInterno || produto.id || "");
+  const codigoInterno = String(produto.codigoInterno || produto.id || "");
+  const codigo = String(produto.gtin || produto.codigoBarras || eanFallback || codigoInterno);
   return {
     id: produto.id != null ? String(produto.id) : codigo,
     ean: codigo,
     codigo_barras: codigo,
     descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
-    codigoInterno: produto.codigoInterno,
+    codigoInterno,
     secao: produto.secao?.descricao,
     grupo: produto.grupo?.descricao,
     imageUrl: extrairImagemProduto(produto),
@@ -494,14 +495,15 @@ async function montarProdutoCompleto(
     }),
   ]);
 
-  const codigo = String(produto.gtin || produto.codigoBarras || eanResolvido || produto.codigoInterno || produtoId);
+  const codigoInterno = String(produto.codigoInterno || produtoId);
+  const codigo = String(produto.gtin || produto.codigoBarras || eanResolvido || codigoInterno);
 
   return {
     id: produtoId,
     ean: codigo,
     codigo_barras: codigo,
     descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
-    codigoInterno: produto.codigoInterno,
+    codigoInterno,
     empresa,
     secao: produto.secao?.descricao || secao || undefined,
     grupo: produto.grupo?.descricao || grupo || undefined,
@@ -556,7 +558,18 @@ async function buscarProdutosPorTermo(
   };
 
   const digits = clean.replace(/\D/g, "");
-  if (/^\d{6,14}$/.test(digits)) {
+  if (/^\d{3,14}$/.test(digits)) {
+    const produtoPorId = await fetchErpJson<ErpProduto>(
+      baseUrl,
+      token,
+      `/v1/produto/produtos/${encodeURIComponent(digits)}`,
+      debug,
+      `produto-opcao-id:${digits}`
+    ).catch(() => null);
+    if (produtoPorId?.response.ok && produtoPorId.data?.id) {
+      addProduto(produtoPorId.data, digits);
+    }
+
     const foundByEan = await buscarCodigoAuxiliarPorEan(baseUrl, token, digits, debug).catch(() => null);
     if (foundByEan?.codigoAuxiliar?.produtoId) {
       const result = await fetchErpJson<ErpProduto>(

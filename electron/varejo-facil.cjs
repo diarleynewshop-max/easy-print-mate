@@ -265,13 +265,14 @@ function extrairImagemProduto(produto) {
 }
 
 function produtoBasico(produto, eanFallback = "") {
-  const codigo = produto.gtin || produto.codigoBarras || eanFallback || produto.codigoInterno || (produto.id != null ? String(produto.id) : "");
+  const codigoInterno = produto.codigoInterno || (produto.id != null ? String(produto.id) : "");
+  const codigo = produto.gtin || produto.codigoBarras || eanFallback || codigoInterno;
   return {
     id: produto.id != null ? String(produto.id) : codigo,
     ean: String(codigo || ""),
     codigo_barras: String(codigo || ""),
     descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
-    codigoInterno: produto.codigoInterno || "",
+    codigoInterno,
     secao: produto.secao?.descricao || undefined,
     grupo: produto.grupo?.descricao || undefined,
     imageUrl: extrairImagemProduto(produto),
@@ -366,7 +367,8 @@ async function montarProdutoCompleto(baseUrl, token, empresa, produto, eanResolv
     buscarGrupo(baseUrl, token, produto.secaoId, produto.grupoId, debug).catch(() => ""),
   ]);
 
-  const codigo = produto.gtin || produto.codigoBarras || eanResolvido || produto.codigoInterno || produtoId;
+  const codigoInterno = produto.codigoInterno || produtoId;
+  const codigo = produto.gtin || produto.codigoBarras || eanResolvido || codigoInterno;
   const imageUrl = extrairImagemProduto(produto);
   if (!imageUrl) {
     const imageKeys = Object.keys(produto).filter((k) => /foto|imagem|image|photo|url/i.test(k));
@@ -378,7 +380,7 @@ async function montarProdutoCompleto(baseUrl, token, empresa, produto, eanResolv
     ean: String(codigo || ""),
     codigo_barras: String(codigo || ""),
     descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
-    codigoInterno: produto.codigoInterno,
+    codigoInterno,
     empresa,
     secao: produto.secao?.descricao || secao || undefined,
     grupo: produto.grupo?.descricao || grupo || undefined,
@@ -413,7 +415,12 @@ async function buscarProdutosPorTermo(baseUrl, token, termo, limit, debug) {
   };
 
   const digits = clean.replace(/\D/g, "");
-  if (/^\d{6,14}$/.test(digits)) {
+  if (/^\d{3,14}$/.test(digits)) {
+    const produtoPorId = await fetchErpJson(baseUrl, token, `/v1/produto/produtos/${encodeURIComponent(digits)}`, debug, `produto-opcao-id:${digits}`).catch(() => null);
+    if (produtoPorId?.response?.ok && produtoPorId.data?.id) {
+      addProduto(produtoPorId.data, digits);
+    }
+
     const foundByEan = await buscarCodigoAuxiliarPorEan(baseUrl, token, digits, debug).catch(() => null);
     if (foundByEan?.codigoAuxiliar?.produtoId) {
       const result = await fetchErpJson(baseUrl, token, `/v1/produto/produtos/${foundByEan.codigoAuxiliar.produtoId}`, debug, `produto-opcao-ean:${digits}`);
@@ -590,7 +597,7 @@ async function listarProdutosPaginado({ empresa: empresaInput, companyName, base
       ean: p.gtin || p.codigoBarras || "",
       codigo_barras: p.gtin || p.codigoBarras || "",
       descricao: p.descricao || p.descricaoReduzida || "",
-      codigoInterno: p.codigoInterno || "",
+      codigoInterno: p.codigoInterno || String(p.id || ""),
       secao: p.secao?.descricao || "",
       grupo: p.grupo?.descricao || "",
       ultimaAlteracao: p.dataAtualizacao || p.dataAlteracao || null
@@ -645,7 +652,7 @@ async function sincronizarAlterados({ empresa: empresaInput, companyName, baseUr
         ean: p.gtin || p.codigoBarras || "",
         codigo_barras: p.gtin || p.codigoBarras || "",
         descricao: p.descricao || p.descricaoReduzida || "",
-        codigoInterno: p.codigoInterno || "",
+        codigoInterno: p.codigoInterno || String(p.id || ""),
         precoVarejo: precos.precoVarejo,
         precoAtacado: precos.precoAtacado,
         precoOriginal: precos.precoOriginal,

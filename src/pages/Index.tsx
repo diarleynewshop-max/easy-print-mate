@@ -58,6 +58,8 @@ const Index = () => {
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorDebug, setErrorDebug] = useState<unknown>(null);
+  const [lastFailedCode, setLastFailedCode] = useState<string | null>(null);
+  const [aliasCode, setAliasCode] = useState("");
   const [copies, setCopies] = useState(3);
   const [previewTab, setPreviewTab] = useState<"label" | "sheet">("label");
   const [printQueue, setPrintQueue] = useState<PrintQueueItem[]>([]);
@@ -190,19 +192,34 @@ const Index = () => {
     return /^[A-Za-z0-9._-]{3,}$/.test(query);
   };
 
+  const fetchByCodeOrId = async (lookup: string) => {
+    if (/^\d+$/.test(lookup)) {
+      try {
+        return await fetchProductById(config, lookup);
+      } catch (error) {
+        if (!(error instanceof VFError) || ![404, 409].includes(error.status || 0)) throw error;
+      }
+    }
+    return fetchProductByEan(config, lookup);
+  };
+
   const search = async (rawCode?: string) => {
     const query = (rawCode ?? code).trim();
     if (!query) return;
+    const aliasTarget = storage.resolveCodeAlias(query);
+    const lookupQuery = aliasTarget || query;
     setLoading(true);
     setScanState("searching");
     setError(null);
     setErrorDebug(null);
+    setLastFailedCode(null);
+    setAliasCode("");
     setProduct(null);
     setSearchResults([]);
 
     try {
       let lastLookupError: unknown = null;
-      const locals = window.easyPrint?.isDesktop ? await window.easyPrint.dbSearchProducts(query) : [];
+      const locals = window.easyPrint?.isDesktop ? await window.easyPrint.dbSearchProducts(lookupQuery) : [];
 
       if (locals.length === 1) {
         const p = await loadProductDetails(locals[0]);
@@ -216,9 +233,9 @@ const Index = () => {
         return;
       }
 
-      if (shouldTryDirectLookup(query)) {
+      if (shouldTryDirectLookup(lookupQuery)) {
         try {
-          const p = await fetchProductByEan(config, query);
+          const p = await fetchProductByEan(config, lookupQuery);
           await applyFoundProduct(p);
           return;
         } catch (err) {
@@ -227,7 +244,7 @@ const Index = () => {
         }
       }
 
-      const remoteResults = await searchProducts(config, query, 20);
+      const remoteResults = await searchProducts(config, lookupQuery, 20);
       if (remoteResults.length === 1) {
         const p = await loadProductDetails(remoteResults[0]);
         await applyFoundProduct(p);
@@ -248,6 +265,38 @@ const Index = () => {
       setScanState("error");
     } catch (e) {
       const msg = e instanceof VFError ? e.message : "Erro inesperado";
+      setErrorDebug(e instanceof VFError ? e.debug : null);
+      setError(msg);
+      if (e instanceof VFError && e.status === 404) {
+        setLastFailedCode(query);
+      }
+      setScanState("error");
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+      focusInput();
+    }
+  };
+
+  const handleLinkMissingCode = async () => {
+    const source = lastFailedCode?.trim();
+    const target = aliasCode.trim();
+    if (!source || !target) return toast.error("Informe o codigo interno");
+    if (source.toUpperCase() === target.toUpperCase()) return toast.error("Codigo igual ao codigo lido");
+
+    setLoading(true);
+    setScanState("searching");
+    setError(null);
+    setErrorDebug(null);
+    try {
+      const p = await fetchByCodeOrId(target);
+      storage.saveCodeAlias(source, target);
+      await applyFoundProduct(p);
+      toast.success(`Codigo ${source} vinculado ao produto ${p.codigoInterno || p.ean || target}`);
+      setLastFailedCode(null);
+      setAliasCode("");
+    } catch (e) {
+      const msg = e instanceof VFError ? e.message : "Erro ao vincular codigo";
       setErrorDebug(e instanceof VFError ? e.debug : null);
       setError(msg);
       setScanState("error");
@@ -755,6 +804,28 @@ const Index = () => {
                           {JSON.stringify(errorDebug, null, 2)}
                         </pre>
                       </details>
+                    ) : null}
+                    {lastFailedCode ? (
+                      <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                        <div className="text-xs font-medium text-muted-foreground">
+                          Codigo lido: <span className="font-mono text-foreground">{lastFailedCode}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            className="h-9 flex-1 rounded-md border bg-background px-3 text-sm font-mono"
+                            placeholder="Codigo interno"
+                            value={aliasCode}
+                            onChange={(event) => setAliasCode(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") void handleLinkMissingCode();
+                            }}
+                          />
+                          <Button type="button" size="sm" onClick={() => void handleLinkMissingCode()}>
+                            <Plus className="h-4 w-4" />
+                            Vincular
+                          </Button>
+                        </div>
+                      </div>
                     ) : null}
                   </div>
                 )}
