@@ -12,7 +12,7 @@ interface Props {
 export const ProductSearch = forwardRef<HTMLInputElement, Props>(({ value, onChange, onSubmit, loading }, ref) => {
   return (
     <div className="relative">
-      <ScanLine className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 text-muted-foreground" />
+      <ScanLine className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-muted-foreground" />
       <Input
         ref={ref}
         autoFocus
@@ -24,8 +24,8 @@ export const ProductSearch = forwardRef<HTMLInputElement, Props>(({ value, onCha
             onSubmit();
           }
         }}
-        placeholder="Bipe ou digite o código de barras e pressione Enter..."
-        className="h-16 pl-14 text-2xl font-mono tracking-wider"
+        placeholder="Bipe, digite codigo/SKU ou busque por descricao..."
+        className="h-16 pl-14 text-2xl font-medium"
         disabled={loading}
       />
     </div>

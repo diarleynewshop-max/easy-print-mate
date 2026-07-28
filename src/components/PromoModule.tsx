@@ -495,7 +495,7 @@ function LoteTab({ config, templateId, fillMode }: { config: VFConfig; templateI
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Erro";
         let errMsg = msg;
-        try { errMsg = JSON.parse(msg).message || msg; } catch {}
+        try { errMsg = JSON.parse(msg).message || msg; } catch { /* mensagem original mantida */ }
         setItems((prev) => prev.map((x) => x.id === item.id ? { ...x, updating: false, error: errMsg } : x));
         fail++;
       }

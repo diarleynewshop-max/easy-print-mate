@@ -50,7 +50,7 @@ export async function loadLocalData() {
   await Promise.all(
     Object.values(K).map(async (key) => {
       const value = await window.easyPrint!.getItem(key);
-      if (value != null) memoryStore[key] = value;
+      if (typeof value === "string") memoryStore[key] = value;
     }),
   );
   const archivedPrints = await window.easyPrint.readPrintEvents().catch(() => []);
@@ -189,19 +189,23 @@ export function ensureDefaultTemplates(templates: LabelTemplate[]): LabelTemplat
   if (!result.some((t) => t.id === ANEL_PRESET_ID)) {
     result = [...result, anelPreset()];
   } else {
-    // Fix: Anel preset was ZT (printing upside down), corrected to ZB with inverted Y positions
+    // Corrige versoes antigas do preset de anel salvas em dados.json.
+    // O modelo antigo ficava sem deslocamento lateral; ao trocar de etiqueta
+    // o operador precisava compensar cerca de 20mm manualmente.
     result = result.map((t) => {
-      if (t.id !== ANEL_PRESET_ID || t.printRotation === 180) return t;
-      return {
-        ...t,
-        printRotation: 180 as const,
-        fields: t.fields.map((f) => {
-          if (f.key === "descricao") return { ...f, y: 5.8 };
-          if (f.key === "barcode")   return { ...f, y: 2.1 };
-          if (f.key === "precoVarejo") return { ...f, y: 1.7 };
-          return f;
-        }),
-      };
+      if (t.id !== ANEL_PRESET_ID) return t;
+      const preset = anelPreset();
+      const outdated =
+        Math.abs(t.widthMm - preset.widthMm) > 0.01 ||
+        Math.abs(t.heightMm - preset.heightMm) > 0.01 ||
+        Math.abs((t.marginLeftMm ?? 0) - (preset.marginLeftMm ?? 0)) > 0.01 ||
+        Math.abs((t.marginTopMm ?? 0) - (preset.marginTopMm ?? 0)) > 0.01 ||
+        Math.abs((t.marginBottomMm ?? 0) - (preset.marginBottomMm ?? 0)) > 0.01 ||
+        t.printRotation !== preset.printRotation;
+
+      return outdated
+        ? { ...preset, preferredPrinterName: t.preferredPrinterName || preset.preferredPrinterName }
+        : t;
     });
   }
   if (!result.some((t) => t.id === AMARELA_PRESET_ID)) result = [...result, amarelaPreset()];

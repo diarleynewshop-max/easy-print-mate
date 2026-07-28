@@ -142,12 +142,12 @@ function autoBarcodeNarrow(field: LabelField, template: LabelTemplate, payload: 
 
 function eplBarcodeType(field: LabelField, payload: string) {
   const requested = field.barcodeFormat || "auto";
-  if (requested === "CODE128") return "1";
-  if (requested === "EAN13") return "E30";
-  if (requested === "EAN8") return "E80";
-  if (requested === "UPC") return "UA0";
-  if (requested === "ITF14") return "2";
   const digitsOnly = /^\d+$/.test(payload);
+  if (requested === "CODE128") return "1";
+  if (requested === "EAN13") return digitsOnly && payload.length === 13 ? "E30" : "1";
+  if (requested === "EAN8") return digitsOnly && payload.length === 8 ? "E80" : "1";
+  if (requested === "UPC") return digitsOnly && payload.length === 12 ? "UA0" : "1";
+  if (requested === "ITF14") return digitsOnly && payload.length === 14 ? "2" : "1";
   if (!digitsOnly) return "1";
   if (payload.length === 8) return "E80";
   if (payload.length === 12) return "UA0";

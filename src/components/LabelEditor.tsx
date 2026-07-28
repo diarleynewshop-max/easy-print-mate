@@ -509,9 +509,9 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
             const next = restoreElginPreset(local);
             setLocal(next);
             setCurrentId(ELGIN_PRESET_ID);
-            toast.success("Preset Elgin restaurado");
+            toast.success("Presets de etiqueta restaurados");
           }}>
-            <RotateCw /> Preset Elgin
+            <RotateCw /> Presets
           </Button>
           <Button size="sm" variant="outline" className="h-8" onClick={remove}>
             <Trash2 /> Excluir
@@ -956,7 +956,7 @@ export function LabelEditor({ templates, activeId, printers = [], onChange }: Pr
                     <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Código</div>
                     <SelectControl
                       label="Formato"
-                      value={selected.barcodeFormat || "EAN13"}
+                      value={selected.barcodeFormat || "auto"}
                       options={[...BARCODE_FORMATS]}
                       onChange={(value) => updateField(selected.key, { barcodeFormat: value as LabelField["barcodeFormat"] })}
                     />

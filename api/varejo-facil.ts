@@ -69,7 +69,7 @@ type DebugStep = {
 const HOSTS: Record<EmpresaKey, string> = {
   NEWSHOP: "newshop.varejofacil.com",
   FACIL: "facil.varejofacil.com",
-  SOYE: "soye.varejofacil.com",
+  SOYE: "facil.varejofacil.com",
 };
 
 const ERP_LOJA_BY_EMPRESA: Record<EmpresaKey, number> = {
@@ -234,6 +234,79 @@ function normalizarEans(codigo: string): string[] {
   return [...new Set(candidatos.filter(Boolean))];
 }
 
+function sanitizeSearchTerm(value: string): string {
+  return String(value || "")
+    .split("")
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code < 32 || code === 127 ? " " : char;
+    })
+    .join("")
+    .replace(/[;=(),*]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function searchCandidates(value: string): string[] {
+  const clean = sanitizeSearchTerm(value);
+  if (!clean) return [];
+
+  const candidates = [clean];
+  const noHyphen = clean.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+  const compact = clean.replace(/[\s-]+/g, "");
+  if (noHyphen && noHyphen !== clean) candidates.push(noHyphen);
+  if (compact && compact !== clean) candidates.push(compact);
+
+  const digits = clean.replace(/\D/g, "");
+  if (digits.length >= 3 && digits !== clean) candidates.push(digits);
+
+  const alphaNum = compact.match(/^([A-Za-z]+)(\d{2,})$/);
+  if (alphaNum) {
+    const [, prefix, numbers] = alphaNum;
+    candidates.push(`${prefix}-${numbers}`, `${prefix} ${numbers}`);
+    if (numbers.length > 3) {
+      candidates.push(`${prefix}-${numbers.slice(0, -1)}`, `${prefix}${numbers.slice(0, -1)}`);
+    }
+  }
+
+  return [...new Set(candidates.filter((candidate) => candidate.length >= 2))].slice(0, 8);
+}
+
+function extrairImagemProduto(produto: ErpProduto): string | undefined {
+  const imagens = Array.isArray(produto.imagens) ? produto.imagens : [];
+  for (const image of imagens) {
+    if (typeof image === "string" && image.trim()) return image.trim();
+    if (image && typeof image === "object") {
+      const item = image as Record<string, unknown>;
+      const value = item.url || item.imagem || item.src || item.foto || item.imageUrl;
+      if (value) return String(value);
+    }
+  }
+  return (
+    (typeof produto.urlFoto === "string" && produto.urlFoto) ||
+    (typeof produto.fotoPrincipal === "string" && produto.fotoPrincipal) ||
+    (typeof produto.urlFotoPrincipal === "string" && produto.urlFotoPrincipal) ||
+    (typeof produto.urlImagem === "string" && produto.urlImagem) ||
+    (typeof produto.imagem === "string" && produto.imagem) ||
+    (typeof produto.foto === "string" && produto.foto) ||
+    undefined
+  );
+}
+
+function produtoBasico(produto: ErpProduto, eanFallback = "") {
+  const codigo = String(produto.gtin || produto.codigoBarras || eanFallback || produto.codigoInterno || produto.id || "");
+  return {
+    id: produto.id != null ? String(produto.id) : codigo,
+    ean: codigo,
+    codigo_barras: codigo,
+    descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
+    codigoInterno: produto.codigoInterno,
+    secao: produto.secao?.descricao,
+    grupo: produto.grupo?.descricao,
+    imageUrl: extrairImagemProduto(produto),
+  };
+}
+
 function getErpLojaAtiva(empresa: EmpresaKey, lojaId?: number): number {
   return Number.isFinite(lojaId) ? Number(lojaId) : ERP_LOJA_BY_EMPRESA[empresa] || 1;
 }
@@ -378,6 +451,131 @@ async function buscarGrupo(
   return result.response.ok ? result.data?.descricao || "" : "";
 }
 
+async function montarProdutoCompleto(
+  baseUrl: string,
+  token: string,
+  empresa: EmpresaKey,
+  produto: ErpProduto,
+  eanResolvido: string,
+  lojaId: number | undefined,
+  debug: DebugStep[]
+) {
+  const produtoId = String(produto.id);
+  const lojaAtiva = getErpLojaAtiva(empresa, lojaId);
+  const [precos, estoque, secao, grupo] = await Promise.all([
+    buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch((error): PrecosNormalizados & { precoOriginal: number } => {
+      debug.push({ step: "precos-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
+      return { precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 };
+    }),
+    buscarEstoque(baseUrl, token, produtoId, lojaAtiva, debug).catch((error) => {
+      debug.push({ step: "estoque-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
+      return undefined;
+    }),
+    buscarSecao(baseUrl, token, produto.secaoId, debug).catch((error) => {
+      debug.push({ step: "secao-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
+      return "";
+    }),
+    buscarGrupo(baseUrl, token, produto.secaoId, produto.grupoId, debug).catch((error) => {
+      debug.push({ step: "grupo-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
+      return "";
+    }),
+  ]);
+
+  const codigo = String(produto.gtin || produto.codigoBarras || eanResolvido || produto.codigoInterno || produtoId);
+
+  return {
+    id: produtoId,
+    ean: codigo,
+    codigo_barras: codigo,
+    descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
+    codigoInterno: produto.codigoInterno,
+    secao: produto.secao?.descricao || secao || undefined,
+    grupo: produto.grupo?.descricao || grupo || undefined,
+    precoVarejo: precos.precoVarejo,
+    precoAtacado: precos.precoAtacado,
+    precoOriginal: precos.precoOriginal,
+    estoque,
+    imageUrl: extrairImagemProduto(produto),
+  };
+}
+
+async function buscarProdutoCompletoPorId(
+  baseUrl: string,
+  token: string,
+  empresa: EmpresaKey,
+  produtoId: string,
+  lojaId: number | undefined,
+  debug: DebugStep[]
+) {
+  const result = await fetchErpJson<ErpProduto>(
+    baseUrl,
+    token,
+    `/v1/produto/produtos/${encodeURIComponent(produtoId)}`,
+    debug,
+    `produto-por-id:${produtoId}`
+  );
+
+  if (!result.response.ok || !result.data?.id) {
+    const error = new Error(`Produto nao encontrado para o ID ${produtoId}`);
+    (error as Error & { status?: number }).status = result.response.status || 404;
+    throw error;
+  }
+
+  return montarProdutoCompleto(baseUrl, token, empresa, result.data, "", lojaId, debug);
+}
+
+async function buscarProdutosPorTermo(
+  baseUrl: string,
+  token: string,
+  termo: string,
+  limit: number,
+  debug: DebugStep[]
+) {
+  const clean = sanitizeSearchTerm(termo);
+  const itemsById = new Map<string, ReturnType<typeof produtoBasico>>();
+  if (!clean) return [];
+
+  const addProduto = (produto: ErpProduto, eanFallback = "") => {
+    if (!produto?.id || itemsById.size >= limit) return;
+    const key = String(produto.id);
+    if (!itemsById.has(key)) itemsById.set(key, produtoBasico(produto, eanFallback));
+  };
+
+  const digits = clean.replace(/\D/g, "");
+  if (/^\d{6,14}$/.test(digits)) {
+    const foundByEan = await buscarCodigoAuxiliarPorEan(baseUrl, token, digits, debug).catch(() => null);
+    if (foundByEan?.codigoAuxiliar?.produtoId) {
+      const result = await fetchErpJson<ErpProduto>(
+        baseUrl,
+        token,
+        `/v1/produto/produtos/${foundByEan.codigoAuxiliar.produtoId}`,
+        debug,
+        `produto-opcao-ean:${digits}`
+      );
+      if (result.response.ok && result.data) addProduto(result.data, foundByEan.eanEncontrado || digits);
+    }
+  }
+
+  for (const candidate of searchCandidates(clean)) {
+    for (const field of ["descricao", "codigoInterno"]) {
+      if (itemsById.size >= limit) break;
+      const fiql = encodeURIComponent(`${field}==*${candidate}*`);
+      const requestPath = `/v1/produto/produtos?q=${fiql}&count=${limit}`;
+      const result = await fetchErpJson<ErpProduto[] | { items?: ErpProduto[] }>(
+        baseUrl,
+        token,
+        requestPath,
+        debug,
+        `busca-${field}:${candidate}`
+      );
+      if (!result.response.ok) continue;
+      for (const produto of getItems<ErpProduto>(result.data)) addProduto(produto);
+    }
+  }
+
+  return Array.from(itemsById.values()).slice(0, limit);
+}
+
 async function consultarPrecoProdutoVarejoFacil(
   baseUrl: string,
   token: string,
@@ -415,6 +613,18 @@ async function consultarPrecoProdutoVarejoFacil(
   }
 
   if (!produto?.id) {
+    const opcoes = await buscarProdutosPorTermo(baseUrl, token, codigo, 2, debug);
+    if (opcoes.length === 1 && opcoes[0].id) {
+      return buscarProdutoCompletoPorId(baseUrl, token, empresa, String(opcoes[0].id), lojaId, debug);
+    }
+    if (opcoes.length > 1) {
+      const error = new Error(`Encontrei ${opcoes.length} produtos para "${codigo}". Escolha o item na lista de resultados.`);
+      (error as Error & { status?: number }).status = 409;
+      throw error;
+    }
+  }
+
+  if (!produto?.id) {
     if (debug.some((step) => step.status === 401)) {
       const error = new Error("ERP recusou o Authorization nas consultas. Verifique se o token/usuario da Vercel tem permissao na API.");
       (error as Error & { status?: number }).status = 401;
@@ -429,40 +639,7 @@ async function consultarPrecoProdutoVarejoFacil(
 
   debug.push({ step: "produto-encontrado", path: "-", found: true, message: `produtoId=${produto.id}` });
 
-  const produtoId = String(produto.id);
-  const lojaAtiva = getErpLojaAtiva(empresa, lojaId);
-  const [precos, estoque, secao, grupo] = await Promise.all([
-    buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch((error): PrecosNormalizados & { precoOriginal: number } => {
-      debug.push({ step: "precos-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
-      return { precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 };
-    }),
-    buscarEstoque(baseUrl, token, produtoId, lojaAtiva, debug).catch((error) => {
-      debug.push({ step: "estoque-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
-      return undefined;
-    }),
-    buscarSecao(baseUrl, token, produto.secaoId, debug).catch((error) => {
-      debug.push({ step: "secao-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
-      return "";
-    }),
-    buscarGrupo(baseUrl, token, produto.secaoId, produto.grupoId, debug).catch((error) => {
-      debug.push({ step: "grupo-erro", path: "-", message: error instanceof Error ? error.message : String(error) });
-      return "";
-    }),
-  ]);
-
-  return {
-    id: produtoId,
-    ean: eanResolvido,
-    codigo_barras: eanResolvido,
-    descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
-    codigoInterno: produto.codigoInterno,
-    secao: produto.secao?.descricao || secao || undefined,
-    grupo: produto.grupo?.descricao || grupo || undefined,
-    precoVarejo: precos.precoVarejo,
-    precoAtacado: precos.precoAtacado,
-    precoOriginal: precos.precoOriginal,
-    estoque,
-  };
+  return montarProdutoCompleto(baseUrl, token, empresa, produto, eanResolvido, lojaId, debug);
 }
 
 export default async function handler(
@@ -474,8 +651,11 @@ export default async function handler(
   }
 
   const codigo = getSingle(req.query.codigo).trim();
-  if (!codigo) {
-    return res.status(400).json({ error: "codigo obrigatorio" });
+  const produtoId = getSingle(req.query.produtoId).trim();
+  const search = sanitizeSearchTerm(getSingle(req.query.search));
+  const limit = Math.max(1, Math.min(50, Number(getSingle(req.query.limit)) || 20));
+  if (!codigo && !produtoId && !search) {
+    return res.status(400).json({ error: "codigo, produtoId ou search obrigatorio" });
   }
 
   const empresa = normalizeEmpresa(req.query.empresa);
@@ -486,7 +666,7 @@ export default async function handler(
     {
       step: "entrada",
       path: "/api/varejo-facil",
-      message: `empresa=${empresa}; codigo=${codigo}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}`,
+      message: `empresa=${empresa}; codigo=${codigo || "-"}; produtoId=${produtoId || "-"}; search=${search || "-"}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}`,
     },
   ];
 
@@ -500,6 +680,17 @@ export default async function handler(
       found: true,
       message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}`,
     });
+
+    if (produtoId) {
+      const product = await buscarProdutoCompletoPorId(baseUrl, token, empresa, produtoId, Number.isFinite(lojaId) ? lojaId : undefined, debug);
+      return res.status(200).json({ product, empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null, debug });
+    }
+
+    if (search) {
+      const items = await buscarProdutosPorTermo(baseUrl, token, search, limit, debug);
+      return res.status(200).json({ items, empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null, debug });
+    }
+
     const product = await consultarPrecoProdutoVarejoFacil(baseUrl, token, empresa, codigo, Number.isFinite(lojaId) ? lojaId : undefined, debug);
     console.info("[varejo-facil] produto resolvido", { empresa, codigo, produtoId: product.id, steps: debug });
     return res.status(200).json({ product, empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null, debug });

@@ -4,7 +4,7 @@ const fsp = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const { consultarProduto, loadErpEnv, listarProdutosPaginado, sincronizarAlterados, atualizarPrecoOferta } = require("./varejo-facil.cjs");
+const { consultarProduto, consultarProdutoPorId, pesquisarProdutos, loadErpEnv, listarProdutosPaginado, sincronizarAlterados, atualizarPrecoOferta } = require("./varejo-facil.cjs");
 const { autoUpdater } = require("electron-updater");
 const Database = require("better-sqlite3");
 
@@ -399,6 +399,42 @@ ipcMain.handle("erp:fetch-product", async (_event, config, codigo) => {
 
   try {
     return await consultarProduto({ ...config, codigo: code });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error("Erro desconhecido");
+    throw new Error(JSON.stringify({
+      message: err.message,
+      status: err.status,
+      debug: err.debug,
+    }));
+  }
+});
+
+ipcMain.handle("erp:fetch-product-by-id", async (_event, config, produtoId) => {
+  const id = String(produtoId || "").trim();
+  if (!id) {
+    const error = new Error("ID do produto vazio");
+    error.status = 400;
+    throw error;
+  }
+
+  try {
+    return await consultarProdutoPorId({ ...config, produtoId: id });
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error("Erro desconhecido");
+    throw new Error(JSON.stringify({
+      message: err.message,
+      status: err.status,
+      debug: err.debug,
+    }));
+  }
+});
+
+ipcMain.handle("erp:search-products", async (_event, config, search, limit = 20) => {
+  const term = String(search || "").trim();
+  if (!term) return { items: [], debug: [] };
+
+  try {
+    return await pesquisarProdutos({ ...config, search: term, limit });
   } catch (error) {
     const err = error instanceof Error ? error : new Error("Erro desconhecido");
     throw new Error(JSON.stringify({

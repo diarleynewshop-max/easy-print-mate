@@ -338,6 +338,6 @@ export async function printA4Pdf(template: A4Template, products: (Product | null
   const url = doc.output("bloburl") as unknown as string;
   const w = window.open(url, "_blank");
   if (w) {
-    setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 500);
+    setTimeout(() => { try { w.focus(); w.print(); } catch { /* impressao manual fica com a aba aberta */ } }, 500);
   }
 }

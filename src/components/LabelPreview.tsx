@@ -121,8 +121,23 @@ function getSafeFieldSize(template: LabelTemplate, field: LabelField, visibleFie
 }
 
 function getBarcodeFormat(ean: string, field?: LabelField) {
-  if (field?.barcodeFormat && field.barcodeFormat !== "auto") return field.barcodeFormat;
-  return ean.length === 13 ? "EAN13" : "CODE128";
+  const digitsOnly = /^\d+$/.test(ean);
+  const requested = field?.barcodeFormat;
+
+  if (requested && requested !== "auto") {
+    if (requested === "EAN13") return digitsOnly && ean.length === 13 ? "EAN13" : "CODE128";
+    if (requested === "EAN8") return digitsOnly && ean.length === 8 ? "EAN8" : "CODE128";
+    if (requested === "UPC") return digitsOnly && ean.length === 12 ? "UPC" : "CODE128";
+    if (requested === "ITF14") return digitsOnly && ean.length === 14 ? "ITF14" : "CODE128";
+    return requested;
+  }
+
+  if (!digitsOnly) return "CODE128";
+  if (ean.length === 8) return "EAN8";
+  if (ean.length === 12) return "UPC";
+  if (ean.length === 13) return "EAN13";
+  if (ean.length === 14) return "ITF14";
+  return "CODE128";
 }
 
 function useBarcode(ean: string, visible: boolean, widthMm: number, barAreaPx: number, field?: LabelField, template?: LabelTemplate) {

@@ -4,7 +4,7 @@ const path = require("path");
 const HOSTS = {
   NEWSHOP: "newshop.varejofacil.com",
   FACIL: "facil.varejofacil.com",
-  SOYE: "soye.varejofacil.com",
+  SOYE: "facil.varejofacil.com",
 };
 
 const ERP_LOJA_BY_EMPRESA = {
@@ -197,6 +197,71 @@ function normalizarEans(codigo) {
   return [...new Set(candidatos.filter(Boolean))];
 }
 
+function sanitizeSearchTerm(value) {
+  return String(value || "")
+    .split("")
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code < 32 || code === 127 ? " " : char;
+    })
+    .join("")
+    .replace(/[;=(),*]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function searchCandidates(value) {
+  const clean = sanitizeSearchTerm(value);
+  if (!clean) return [];
+
+  const candidates = [clean];
+  const noHyphen = clean.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+  const compact = clean.replace(/[\s-]+/g, "");
+  if (noHyphen && noHyphen !== clean) candidates.push(noHyphen);
+  if (compact && compact !== clean) candidates.push(compact);
+
+  const digits = clean.replace(/\D/g, "");
+  if (digits.length >= 3 && digits !== clean) candidates.push(digits);
+
+  const alphaNum = compact.match(/^([A-Za-z]+)(\d{2,})$/);
+  if (alphaNum) {
+    const [, prefix, numbers] = alphaNum;
+    candidates.push(`${prefix}-${numbers}`, `${prefix} ${numbers}`);
+    if (numbers.length > 3) {
+      candidates.push(`${prefix}-${numbers.slice(0, -1)}`, `${prefix}${numbers.slice(0, -1)}`);
+    }
+  }
+
+  return [...new Set(candidates.filter((candidate) => candidate.length >= 2))].slice(0, 8);
+}
+
+function extrairImagemProduto(produto) {
+  if (!produto || typeof produto !== "object") return undefined;
+  const imagens = Array.isArray(produto.imagens) ? produto.imagens : [];
+  for (const image of imagens) {
+    if (typeof image === "string" && image.trim()) return image.trim();
+    if (image && typeof image === "object") {
+      const value = image.url || image.imagem || image.src || image.foto || image.imageUrl;
+      if (value) return String(value);
+    }
+  }
+  return produto.urlFoto || produto.fotoPrincipal || produto.urlFotoPrincipal || produto.urlImagem || produto.imagem || produto.foto || undefined;
+}
+
+function produtoBasico(produto, eanFallback = "") {
+  const codigo = produto.gtin || produto.codigoBarras || eanFallback || produto.codigoInterno || (produto.id != null ? String(produto.id) : "");
+  return {
+    id: produto.id != null ? String(produto.id) : codigo,
+    ean: String(codigo || ""),
+    codigo_barras: String(codigo || ""),
+    descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
+    codigoInterno: produto.codigoInterno || "",
+    secao: produto.secao?.descricao || undefined,
+    grupo: produto.grupo?.descricao || undefined,
+    imageUrl: extrairImagemProduto(produto),
+  };
+}
+
 async function buscarCodigoAuxiliarPorEan(baseUrl, token, codigo, debug) {
   for (const candidato of normalizarEans(codigo)) {
     const fiql = encodeURIComponent(`id==${candidato}`);
@@ -275,6 +340,87 @@ async function buscarGrupo(baseUrl, token, secaoId, grupoId, debug) {
   return result.response.ok ? result.data?.descricao || "" : "";
 }
 
+async function montarProdutoCompleto(baseUrl, token, empresa, produto, eanResolvido, lojaId, debug) {
+  const produtoId = String(produto.id);
+  const lojaAtiva = Number.isFinite(lojaId) ? Number(lojaId) : ERP_LOJA_BY_EMPRESA[empresa] || 1;
+  const [precos, estoque, secao, grupo] = await Promise.all([
+    buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch(() => ({ precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 })),
+    buscarEstoque(baseUrl, token, produtoId, lojaAtiva, debug).catch(() => undefined),
+    buscarSecao(baseUrl, token, produto.secaoId, debug).catch(() => ""),
+    buscarGrupo(baseUrl, token, produto.secaoId, produto.grupoId, debug).catch(() => ""),
+  ]);
+
+  const codigo = produto.gtin || produto.codigoBarras || eanResolvido || produto.codigoInterno || produtoId;
+  const imageUrl = extrairImagemProduto(produto);
+  if (!imageUrl) {
+    const imageKeys = Object.keys(produto).filter((k) => /foto|imagem|image|photo|url/i.test(k));
+    if (imageKeys.length) debug.push({ step: "image-fields-found", path: "produto", message: imageKeys.map((k) => `${k}=${JSON.stringify(produto[k])}`).join("; ") });
+  }
+
+  return {
+    id: produtoId,
+    ean: String(codigo || ""),
+    codigo_barras: String(codigo || ""),
+    descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
+    codigoInterno: produto.codigoInterno,
+    secao: produto.secao?.descricao || secao || undefined,
+    grupo: produto.grupo?.descricao || grupo || undefined,
+    precoVarejo: precos.precoVarejo,
+    precoAtacado: precos.precoAtacado,
+    precoOriginal: precos.precoOriginal,
+    estoque,
+    imageUrl: imageUrl || undefined,
+  };
+}
+
+async function buscarProdutoCompletoPorId(baseUrl, token, empresa, produtoId, lojaId, debug) {
+  const result = await fetchErpJson(baseUrl, token, `/v1/produto/produtos/${encodeURIComponent(produtoId)}`, debug, `produto-por-id:${produtoId}`);
+  if (!result.response.ok || !result.data?.id) {
+    const error = new Error(`Produto nao encontrado para o ID ${produtoId}`);
+    error.status = result.response.status || 404;
+    error.debug = debug;
+    throw error;
+  }
+  return montarProdutoCompleto(baseUrl, token, empresa, result.data, "", lojaId, debug);
+}
+
+async function buscarProdutosPorTermo(baseUrl, token, termo, limit, debug) {
+  const clean = sanitizeSearchTerm(termo);
+  const itemsById = new Map();
+  if (!clean) return [];
+
+  const addProduto = (produto, eanFallback = "") => {
+    if (!produto?.id || itemsById.size >= limit) return;
+    const key = String(produto.id);
+    if (!itemsById.has(key)) itemsById.set(key, produtoBasico(produto, eanFallback));
+  };
+
+  const digits = clean.replace(/\D/g, "");
+  if (/^\d{6,14}$/.test(digits)) {
+    const foundByEan = await buscarCodigoAuxiliarPorEan(baseUrl, token, digits, debug).catch(() => null);
+    if (foundByEan?.codigoAuxiliar?.produtoId) {
+      const result = await fetchErpJson(baseUrl, token, `/v1/produto/produtos/${foundByEan.codigoAuxiliar.produtoId}`, debug, `produto-opcao-ean:${digits}`);
+      if (result.response.ok) addProduto(result.data, foundByEan.eanEncontrado || digits);
+    }
+  }
+
+  const fields = ["descricao", "codigoInterno"];
+  for (const candidate of searchCandidates(clean)) {
+    for (const field of fields) {
+      if (itemsById.size >= limit) break;
+      const fiql = encodeURIComponent(`${field}==*${candidate}*`);
+      const requestPath = `/v1/produto/produtos?q=${fiql}&count=${limit}`;
+      const result = await fetchErpJson(baseUrl, token, requestPath, debug, `busca-${field}:${candidate}`);
+      if (!result.response.ok) continue;
+      for (const produto of getItems(result.data)) {
+        addProduto(produto);
+      }
+    }
+  }
+
+  return Array.from(itemsById.values()).slice(0, limit);
+}
+
 async function consultarProduto({ codigo, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
@@ -303,6 +449,21 @@ async function consultarProduto({ codigo, empresa: empresaInput, companyName, lo
   }
 
   if (!produto?.id) {
+    const opcoes = await buscarProdutosPorTermo(baseUrl, token, codigo, 2, debug);
+    if (opcoes.length === 1 && opcoes[0].id) {
+      const product = await buscarProdutoCompletoPorId(baseUrl, token, empresa, String(opcoes[0].id), Number.isFinite(lojaId) ? lojaId : undefined, debug);
+      return { product, empresa, lojaId: Number.isFinite(lojaId) ? lojaId : null, debug };
+    }
+    if (opcoes.length > 1) {
+      const error = new Error(`Encontrei ${opcoes.length} produtos para "${codigo}". Escolha o item na lista de resultados.`);
+      error.status = 409;
+      error.debug = debug;
+      error.items = opcoes;
+      throw error;
+    }
+  }
+
+  if (!produto?.id) {
     const error = new Error(debug.some((step) => step.status === 401) ? "ERP recusou o Authorization. Verifique token, usuario ou senha." : `Produto nao encontrado para o codigo ${codigo}`);
     error.status = debug.some((step) => step.status === 401) ? 401 : 404;
     error.debug = debug;
@@ -312,37 +473,55 @@ async function consultarProduto({ codigo, empresa: empresaInput, companyName, lo
   // Sempre prioriza o GTIN/codigo de barras real do produto no ERP.
   // Sem isso, ao buscar por codigo interno ou nome, o campo "ean" ficava com o texto digitado.
   eanResolvido = produto.gtin || produto.codigoBarras || eanResolvido;
-
-  const produtoId = String(produto.id);
-  const lojaAtiva = Number.isFinite(lojaId) ? Number(lojaId) : ERP_LOJA_BY_EMPRESA[empresa] || 1;
-  const [precos, estoque, secao, grupo] = await Promise.all([
-    buscarPrecos(baseUrl, token, produtoId, lojaAtiva, debug).catch(() => ({ precoVarejo: 0, precoAtacado: 0, precoOriginal: 0 })),
-    buscarEstoque(baseUrl, token, produtoId, lojaAtiva, debug).catch(() => undefined),
-    buscarSecao(baseUrl, token, produto.secaoId, debug).catch(() => ""),
-    buscarGrupo(baseUrl, token, produto.secaoId, produto.grupoId, debug).catch(() => ""),
-  ]);
-
-  const imageUrl = produto.urlFoto || produto.fotoPrincipal || produto.urlFotoPrincipal || produto.urlImagem || produto.imagem || produto.foto || undefined;
-  if (!imageUrl) {
-    const imageKeys = Object.keys(produto).filter((k) => /foto|imagem|image|photo|url/i.test(k));
-    if (imageKeys.length) debug.push({ step: "image-fields-found", path: "produto", message: imageKeys.map((k) => `${k}=${JSON.stringify(produto[k])}`).join("; ") });
-  }
+  const product = await montarProdutoCompleto(baseUrl, token, empresa, produto, eanResolvido, Number.isFinite(lojaId) ? lojaId : undefined, debug);
 
   return {
-    product: {
-      id: produtoId,
-      ean: eanResolvido,
-      codigo_barras: eanResolvido,
-      descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
-      codigoInterno: produto.codigoInterno,
-      secao: produto.secao?.descricao || secao || undefined,
-      grupo: produto.grupo?.descricao || grupo || undefined,
-      precoVarejo: precos.precoVarejo,
-      precoAtacado: precos.precoAtacado,
-      precoOriginal: precos.precoOriginal,
-      estoque,
-      imageUrl: imageUrl || undefined,
-    },
+    product,
+    empresa,
+    lojaId: Number.isFinite(lojaId) ? lojaId : null,
+    debug,
+  };
+}
+
+async function consultarProdutoPorId({ produtoId, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
+  const empresa = normalizeEmpresa(companyName || empresaInput);
+  const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
+  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
+  const lojaId = lojaParam ? Number(lojaParam) : undefined;
+  const debug = [{ step: "entrada-id", path: "electron:varejo-facil", message: `empresa=${empresa}; produtoId=${produtoId}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}` }];
+
+  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
+  const username = configuredUsername || getEnv(empresa, "USERNAME");
+  const cacheKey = `${empresa}:${baseUrl}:${username}`;
+  debug.push({ step: "auth", path: `${baseUrl}/auth`, found: true, message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}` });
+
+  const product = await buscarProdutoCompletoPorId(baseUrl, token, empresa, String(produtoId), Number.isFinite(lojaId) ? lojaId : undefined, debug);
+  return {
+    product,
+    empresa,
+    lojaId: Number.isFinite(lojaId) ? lojaId : null,
+    debug,
+  };
+}
+
+async function pesquisarProdutos({ search, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword, limit = 20 }) {
+  const termo = sanitizeSearchTerm(search);
+  if (!termo) return { items: [], debug: [] };
+
+  const empresa = normalizeEmpresa(companyName || empresaInput);
+  const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
+  const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
+  const lojaId = lojaParam ? Number(lojaParam) : undefined;
+  const debug = [{ step: "entrada-search", path: "electron:varejo-facil", message: `empresa=${empresa}; search=${termo}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}` }];
+
+  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
+  const username = configuredUsername || getEnv(empresa, "USERNAME");
+  const cacheKey = `${empresa}:${baseUrl}:${username}`;
+  debug.push({ step: "auth", path: `${baseUrl}/auth`, found: true, message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}` });
+
+  const items = await buscarProdutosPorTermo(baseUrl, token, termo, Math.max(1, Math.min(50, Number(limit) || 20)), debug);
+  return {
+    items,
     empresa,
     lojaId: Number.isFinite(lojaId) ? lojaId : null,
     debug,
@@ -526,4 +705,4 @@ async function atualizarPrecoOferta({ empresa: empresaInput, companyName, baseUr
   throw err;
 }
 
-module.exports = { consultarProduto, loadErpEnv, listarProdutosPaginado, sincronizarAlterados, atualizarPrecoOferta };
+module.exports = { consultarProduto, consultarProdutoPorId, pesquisarProdutos, loadErpEnv, listarProdutosPaginado, sincronizarAlterados, atualizarPrecoOferta };

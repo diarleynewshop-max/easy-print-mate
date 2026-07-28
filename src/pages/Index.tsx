@@ -2,7 +2,7 @@
 import { Product, LabelTemplate, VFConfig, HistoryEntry, PrintEvent, PrintQueueItem } from "@/types/label";
 import { storage, defaultTemplates, ensureDefaultTemplates, restoreElginPreset } from "@/services/storage";
 import { ELGIN_PRESET_ID } from "@/services/presets";
-import { fetchProductByEan, VFError } from "@/api/varejoFacil";
+import { fetchProductByEan, fetchProductById, searchProducts, VFError } from "@/api/varejoFacil";
 import { buildEplBatchPrn, buildEplPrn, buildTestPrn, buildCalibrationPrn, downloadEplPrn } from "@/services/eplService";
 import { printService } from "@/services/printService";
 import { validateTemplate, computeHorizontalSpacing } from "@/services/labelValidation";
@@ -107,7 +107,9 @@ const Index = () => {
     if (view === "scan") {
       const refreshed = storage.getTemplates();
       if (refreshed.length) {
-        setTemplates(refreshed);
+        const next = ensureDefaultTemplates(refreshed);
+        storage.saveTemplates(next);
+        setTemplates(next);
         const activeId = storage.getActiveTemplateId() || ELGIN_PRESET_ID;
         setActiveTemplateId(activeId);
       }
@@ -148,6 +150,45 @@ const Index = () => {
 
   const focusInput = () => setTimeout(() => inputRef.current?.focus(), 50);
 
+  const pushProductHistory = (p: Product) => {
+    const entry: HistoryEntry = { ean: p.ean || p.codigo_barras || String(p.id || ""), descricao: p.descricao, at: Date.now() };
+    storage.pushHistory(entry);
+    setHistory(storage.getHistory());
+  };
+
+  const syncLocalProduct = async (p: Product) => {
+    if (!window.easyPrint?.isDesktop) return;
+    await window.easyPrint.dbSyncProducts([p]).catch(() => null);
+  };
+
+  const loadProductDetails = async (candidate: Product) => {
+    const id = candidate.id != null ? String(candidate.id) : "";
+    if (id) {
+      try {
+        return await fetchProductById(config, id);
+      } catch {
+        // Alguns registros locais antigos foram salvos sem o ID real do ERP.
+      }
+    }
+
+    const lookup = candidate.codigo_barras || candidate.ean || candidate.codigoInterno || "";
+    if (!lookup) return candidate;
+    return fetchProductByEan(config, lookup);
+  };
+
+  const applyFoundProduct = async (p: Product) => {
+    setProduct(p);
+    setScanState("found");
+    pushProductHistory(p);
+    await syncLocalProduct(p);
+  };
+
+  const shouldTryDirectLookup = (query: string) => {
+    if (/\s/.test(query)) return false;
+    if (/^\d{6,14}$/.test(query.replace(/\D/g, ""))) return true;
+    return /^[A-Za-z0-9._-]{3,}$/.test(query);
+  };
+
   const search = async (rawCode?: string) => {
     const query = (rawCode ?? code).trim();
     if (!query) return;
@@ -159,39 +200,51 @@ const Index = () => {
     setSearchResults([]);
 
     try {
-      // 1. Tentar busca no banco local primeiro (EAN ou Descrição)
-      const locals = await window.easyPrint.dbSearchProducts(query);
-      
+      let lastLookupError: unknown = null;
+      const locals = window.easyPrint?.isDesktop ? await window.easyPrint.dbSearchProducts(query) : [];
+
       if (locals.length === 1) {
-        // Encontrou exatamente um no banco local
-        const p = await fetchProductByEan(config, locals[0].ean);
-        setProduct(p);
-        setScanState("found");
-      } else if (locals.length > 1) {
-        // Encontrou varios, mostrar lista
+        const p = await loadProductDetails(locals[0]);
+        await applyFoundProduct(p);
+        return;
+      }
+
+      if (locals.length > 1) {
         setSearchResults(locals);
         setScanState("idle");
-      } else {
-        // 2. Nao encontrou no local, tentar buscar direto no ERP por EAN (se parecer um EAN)
-        const isNumeric = /^\d+$/.test(query);
-        if (isNumeric) {
+        return;
+      }
+
+      if (shouldTryDirectLookup(query)) {
+        try {
           const p = await fetchProductByEan(config, query);
-          setProduct(p);
-          setScanState("found");
-          // Aproveita para salvar no banco local se nao estava la
-          await window.easyPrint.dbSyncProducts([p]);
-        } else {
-          setError("Produto não encontrado no banco local.");
-          setScanState("error");
+          await applyFoundProduct(p);
+          return;
+        } catch (err) {
+          lastLookupError = err;
+          if (!(err instanceof VFError) || ![404, 409].includes(err.status || 0)) throw err;
         }
       }
 
-      if (product || locals.length === 1) {
-        const p = product || locals[0];
-        const entry: HistoryEntry = { ean: p.ean, descricao: p.descricao, at: Date.now() };
-        storage.pushHistory(entry);
-        setHistory(storage.getHistory());
+      const remoteResults = await searchProducts(config, query, 20);
+      if (remoteResults.length === 1) {
+        const p = await loadProductDetails(remoteResults[0]);
+        await applyFoundProduct(p);
+        return;
       }
+
+      if (remoteResults.length > 1) {
+        setSearchResults(remoteResults);
+        setScanState("idle");
+        if (window.easyPrint?.isDesktop) {
+          await window.easyPrint.dbSyncProducts(remoteResults).catch(() => null);
+        }
+        return;
+      }
+
+      if (lastLookupError) throw lastLookupError;
+      setError("Produto nao encontrado no ERP.");
+      setScanState("error");
     } catch (e) {
       const msg = e instanceof VFError ? e.message : "Erro inesperado";
       setErrorDebug(e instanceof VFError ? e.debug : null);
@@ -209,12 +262,8 @@ const Index = () => {
     setScanState("searching");
     setSearchResults([]);
     try {
-      const full = await fetchProductByEan(config, p.ean);
-      setProduct(full);
-      setScanState("found");
-      const entry: HistoryEntry = { ean: full.ean, descricao: full.descricao, at: Date.now() };
-      storage.pushHistory(entry);
-      setHistory(storage.getHistory());
+      const full = await loadProductDetails(p);
+      await applyFoundProduct(full);
     } catch (e) {
       toast.error("Erro ao carregar detalhes do produto");
       setScanState("error");
@@ -387,7 +436,7 @@ const Index = () => {
     storage.saveTemplates(next);
     setActiveTemplateId(ELGIN_PRESET_ID);
     storage.setActiveTemplateId(ELGIN_PRESET_ID);
-    toast.success("Preset Elgin restaurado");
+    toast.success("Presets de etiqueta restaurados");
   };
 
   const reuseFromHistory = (ean: string) => {
@@ -541,7 +590,7 @@ const Index = () => {
                 ))}
               </select>
               <Button size="sm" variant="outline" className="h-7 w-full text-[11px]" onClick={handleRestoreElgin}>
-                <RotateCw className="h-3 w-3" /> Restaurar Elgin
+                <RotateCw className="h-3 w-3" /> Restaurar presets
               </Button>
             </div>
           </>
@@ -666,14 +715,14 @@ const Index = () => {
                     <History className="h-4 w-4" /> Resultados da busca ({searchResults.length})
                   </h3>
                   <div className="grid gap-2 max-h-96 overflow-auto pr-1">
-                    {searchResults.map((p) => (
+                    {searchResults.map((p, index) => (
                       <button
-                        key={p.id}
+                        key={p.id || p.ean || p.codigoInterno || `${p.descricao}-${index}`}
                         onClick={() => selectProduct(p)}
                         className="flex items-center justify-between p-3 rounded-md border bg-background hover:bg-accent transition-colors text-left"
                       >
                         <div className="min-w-0">
-                          <div className="text-[10px] font-mono opacity-70">{p.ean}</div>
+                          <div className="text-[10px] font-mono opacity-70">{p.ean || p.codigo_barras || p.codigoInterno || p.id}</div>
                           <div className="text-sm font-medium truncate">{p.descricao}</div>
                           <div className="text-[10px] text-muted-foreground">{p.secao} / {p.grupo}</div>
                         </div>

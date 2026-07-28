@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("easyPrint", {
   appendPrintEvent: (event) => ipcRenderer.invoke("metrics:append-print-event", event),
   readPrintEvents: () => ipcRenderer.invoke("metrics:read-print-events"),
   fetchProductByEan: (config, codigo) => ipcRenderer.invoke("erp:fetch-product", config, codigo),
+  fetchProductById: (config, produtoId) => ipcRenderer.invoke("erp:fetch-product-by-id", config, produtoId),
+  searchProducts: (config, search, limit) => ipcRenderer.invoke("erp:search-products", config, search, limit),
   erpListProducts: (config, pagina, quantidade, dataAlteracao) => ipcRenderer.invoke("erp:list-products", config, pagina, quantidade, dataAlteracao),
   printRawPrn: (content, printerName) => ipcRenderer.invoke("print:raw-prn", content, printerName),
   printPdf: (pdfDataUrl, printerName) => ipcRenderer.invoke("print:pdf", pdfDataUrl, printerName),

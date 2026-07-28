@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { A4DynamicKey, A4Element, A4ElementType, A4ShapeKind, A4Template } from "@/types/a4";
+import { A4DynamicKey, A4Element, A4ElementType, A4FontFamily, A4ShapeKind, A4Template } from "@/types/a4";
 import { A4_HEIGHT_MM, A4_WIDTH_MM, getBlockRects, getDynamicValue } from "@/services/a4PdfService";
 import { Product } from "@/types/label";
 import { Button } from "@/components/ui/button";
@@ -649,7 +649,7 @@ function ElementProps({
             <NumField label="Fonte (pt)" value={element.fontSize} onChange={(fontSize) => onChange({ fontSize })} />
             <div>
               <Label className="text-xs">Familia</Label>
-              <Select value={element.fontFamily || "helvetica"} onValueChange={(v) => onChange({ fontFamily: v as any })}>
+              <Select value={element.fontFamily || "helvetica"} onValueChange={(v) => onChange({ fontFamily: v as A4FontFamily })}>
                 <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="helvetica">Helvetica</SelectItem>
