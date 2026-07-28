@@ -10,6 +10,7 @@ export interface Product {
   grupo?: string;
   estoque?: number;
   codigoInterno?: string;
+  empresa?: string;
   imageUrl?: string;
   ultimaAlteracao?: string;
 }

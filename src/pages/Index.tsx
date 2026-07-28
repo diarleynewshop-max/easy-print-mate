@@ -162,10 +162,11 @@ const Index = () => {
   };
 
   const loadProductDetails = async (candidate: Product) => {
+    const lookupConfig = candidate.empresa ? { ...config, companyName: candidate.empresa, empresa: candidate.empresa } : config;
     const id = candidate.id != null ? String(candidate.id) : "";
     if (id) {
       try {
-        return await fetchProductById(config, id);
+        return await fetchProductById(lookupConfig, id);
       } catch {
         // Alguns registros locais antigos foram salvos sem o ID real do ERP.
       }
@@ -173,7 +174,7 @@ const Index = () => {
 
     const lookup = candidate.codigo_barras || candidate.ean || candidate.codigoInterno || "";
     if (!lookup) return candidate;
-    return fetchProductByEan(config, lookup);
+    return fetchProductByEan(lookupConfig, lookup);
   };
 
   const applyFoundProduct = async (p: Product) => {
@@ -724,7 +725,9 @@ const Index = () => {
                         <div className="min-w-0">
                           <div className="text-[10px] font-mono opacity-70">{p.ean || p.codigo_barras || p.codigoInterno || p.id}</div>
                           <div className="text-sm font-medium truncate">{p.descricao}</div>
-                          <div className="text-[10px] text-muted-foreground">{p.secao} / {p.grupo}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {[p.empresa, p.secao, p.grupo].filter(Boolean).join(" / ")}
+                          </div>
                         </div>
                         <div className="shrink-0 text-sm font-bold text-primary">
                           Selecionar

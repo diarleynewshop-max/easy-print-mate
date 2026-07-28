@@ -25,8 +25,11 @@ type ProductSearchResponse = {
 
 function bridgeError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
+  const jsonStart = message.indexOf("{");
+  const jsonEnd = message.lastIndexOf("}");
+  const jsonMessage = jsonStart >= 0 && jsonEnd > jsonStart ? message.slice(jsonStart, jsonEnd + 1) : message;
   try {
-    const parsed = JSON.parse(message) as { message?: string; status?: number; debug?: unknown };
+    const parsed = JSON.parse(jsonMessage) as { message?: string; status?: number; debug?: unknown };
     return new VFError(parsed.message || fallback, parsed.status, parsed.debug);
   } catch {
     return new VFError(message);

@@ -13,6 +13,8 @@ const ERP_LOJA_BY_EMPRESA = {
   SOYE: 1,
 };
 
+const ERP_EMPRESAS = ["NEWSHOP", "FACIL", "SOYE"];
+
 const tokenCache = new Map();
 const tokenSourceCache = new Map();
 
@@ -40,6 +42,26 @@ function normalizeEmpresa(value) {
   const normalized = String(value || "").trim().toUpperCase();
   if (!normalized) return "NEWSHOP";
   return normalized.replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "NEWSHOP";
+}
+
+function getEmpresasFallback(empresa) {
+  const primary = normalizeEmpresa(empresa);
+  return [primary, ...ERP_EMPRESAS.filter((item) => item !== primary)];
+}
+
+function configuredBaseMatchesEmpresa(empresa, configuredBaseUrl) {
+  if (!configuredBaseUrl || !HOSTS[empresa]) return false;
+  return String(configuredBaseUrl).toLowerCase().includes(HOSTS[empresa].toLowerCase());
+}
+
+function paramsForEmpresa(params, targetEmpresa, primaryEmpresa) {
+  const useConfiguredBase = targetEmpresa === primaryEmpresa || configuredBaseMatchesEmpresa(targetEmpresa, params.baseUrl);
+  return {
+    ...params,
+    empresa: targetEmpresa,
+    companyName: targetEmpresa,
+    baseUrl: useConfiguredBase ? params.baseUrl : "",
+  };
 }
 
 function getEnv(empresa, key) {
@@ -363,6 +385,7 @@ async function montarProdutoCompleto(baseUrl, token, empresa, produto, eanResolv
     codigo_barras: String(codigo || ""),
     descricao: produto.descricao || produto.descricaoReduzida || produto.codigoInterno || "Produto sem descricao",
     codigoInterno: produto.codigoInterno,
+    empresa,
     secao: produto.secao?.descricao || secao || undefined,
     grupo: produto.grupo?.descricao || grupo || undefined,
     precoVarejo: precos.precoVarejo,
@@ -402,6 +425,17 @@ async function buscarProdutosPorTermo(baseUrl, token, termo, limit, debug) {
       const result = await fetchErpJson(baseUrl, token, `/v1/produto/produtos/${foundByEan.codigoAuxiliar.produtoId}`, debug, `produto-opcao-ean:${digits}`);
       if (result.response.ok) addProduto(result.data, foundByEan.eanEncontrado || digits);
     }
+
+    for (const field of ["gtin", "codigoBarras", "codigoInterno"]) {
+      if (itemsById.size >= limit) break;
+      const fiql = encodeURIComponent(`${field}==${digits}`);
+      const requestPath = `/v1/produto/produtos?q=${fiql}&count=${limit}`;
+      const result = await fetchErpJson(baseUrl, token, requestPath, debug, `busca-exata-${field}:${digits}`);
+      if (!result.response.ok) continue;
+      for (const produto of getItems(result.data)) {
+        addProduto(produto, digits);
+      }
+    }
   }
 
   const fields = ["descricao", "codigoInterno"];
@@ -421,7 +455,7 @@ async function buscarProdutosPorTermo(baseUrl, token, termo, limit, debug) {
   return Array.from(itemsById.values()).slice(0, limit);
 }
 
-async function consultarProduto({ codigo, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
+async function consultarProdutoEmpresa({ codigo, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
   const lojaParam = String(loja || "").trim() || getEnv(empresa, "LOJA_ID");
@@ -483,6 +517,40 @@ async function consultarProduto({ codigo, empresa: empresaInput, companyName, lo
   };
 }
 
+async function consultarProduto(params) {
+  const primary = normalizeEmpresa(params.companyName || params.empresa);
+  const allDebug = [];
+  let lastError = null;
+
+  for (const empresa of getEmpresasFallback(primary)) {
+    try {
+      const result = await consultarProdutoEmpresa(paramsForEmpresa(params, empresa, primary));
+      if (empresa !== primary) {
+        result.debug.unshift({ step: "fallback-empresa", path: "electron:varejo-facil", found: true, message: `produto encontrado em ${empresa} apos falhar em ${primary}` });
+      }
+      return result;
+    } catch (error) {
+      lastError = error;
+      const errDebug = Array.isArray(error?.debug) ? error.debug : [];
+      allDebug.push(...errDebug);
+      allDebug.push({
+        step: "fallback-empresa-falhou",
+        path: "electron:varejo-facil",
+        status: error?.status,
+        message: `empresa=${empresa}; ${error?.message || "falha desconhecida"}`,
+      });
+
+      if (error?.status === 401 && empresa === primary) break;
+      if (error?.status && ![404, 409].includes(error.status)) continue;
+    }
+  }
+
+  const error = new Error(`Produto nao encontrado para o codigo ${params.codigo} nas bases ${getEmpresasFallback(primary).join(", ")}`);
+  error.status = lastError?.status === 401 ? 401 : 404;
+  error.debug = allDebug.length ? allDebug : lastError?.debug;
+  throw error;
+}
+
 async function consultarProdutoPorId({ produtoId, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
@@ -504,7 +572,7 @@ async function consultarProdutoPorId({ produtoId, empresa: empresaInput, company
   };
 }
 
-async function pesquisarProdutos({ search, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword, limit = 20 }) {
+async function pesquisarProdutosEmpresa({ search, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword, limit = 20 }) {
   const termo = sanitizeSearchTerm(search);
   if (!termo) return { items: [], debug: [] };
 
@@ -525,6 +593,46 @@ async function pesquisarProdutos({ search, empresa: empresaInput, companyName, l
     empresa,
     lojaId: Number.isFinite(lojaId) ? lojaId : null,
     debug,
+  };
+}
+
+async function pesquisarProdutos(params) {
+  const termo = sanitizeSearchTerm(params.search);
+  if (!termo) return { items: [], debug: [] };
+
+  const primary = normalizeEmpresa(params.companyName || params.empresa);
+  const limit = Math.max(1, Math.min(50, Number(params.limit) || 20));
+  const itemsByKey = new Map();
+  const allDebug = [];
+  let foundEmpresa = primary;
+
+  for (const empresa of getEmpresasFallback(primary)) {
+    if (itemsByKey.size >= limit) break;
+    try {
+      const result = await pesquisarProdutosEmpresa(paramsForEmpresa({ ...params, limit: limit - itemsByKey.size }, empresa, primary));
+      foundEmpresa = itemsByKey.size === 0 && result.items.length > 0 ? empresa : foundEmpresa;
+      allDebug.push(...(result.debug || []));
+      for (const item of result.items || []) {
+        const key = `${empresa}:${item.id || item.ean || item.codigoInterno || item.descricao}`;
+        if (!itemsByKey.has(key)) itemsByKey.set(key, { ...item, empresa });
+      }
+    } catch (error) {
+      allDebug.push(...(Array.isArray(error?.debug) ? error.debug : []));
+      allDebug.push({
+        step: "fallback-search-empresa-falhou",
+        path: "electron:varejo-facil",
+        status: error?.status,
+        message: `empresa=${empresa}; ${error?.message || "falha desconhecida"}`,
+      });
+      if (error?.status === 401 && empresa === primary) break;
+    }
+  }
+
+  return {
+    items: Array.from(itemsByKey.values()).slice(0, limit),
+    empresa: foundEmpresa,
+    lojaId: null,
+    debug: allDebug,
   };
 }
 
