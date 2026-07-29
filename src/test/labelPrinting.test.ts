@@ -55,4 +55,19 @@ describe("label printing", () => {
     expect(fixed?.marginTopMm).toBe(4);
     expect(fixed?.printRotation).toBe(180);
   });
+
+  it("keeps manual ring label calibration after returning to print", () => {
+    const manualRingPreset = {
+      ...anelPreset(),
+      marginLeftMm: 0,
+      fields: anelPreset().fields.map((field) =>
+        field.key === "descricao" ? { ...field, x: 8 } : field,
+      ),
+    };
+
+    const saved = ensureDefaultTemplates([elginPreset(), manualRingPreset]).find((template) => template.id === ANEL_PRESET_ID);
+
+    expect(saved?.marginLeftMm).toBe(0);
+    expect(saved?.fields.find((field) => field.key === "descricao")?.x).toBe(8);
+  });
 });

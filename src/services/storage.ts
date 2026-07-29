@@ -229,21 +229,20 @@ export function ensureDefaultTemplates(templates: LabelTemplate[]): LabelTemplat
   if (!result.some((t) => t.id === ANEL_PRESET_ID)) {
     result = [...result, anelPreset()];
   } else {
-    // Corrige versoes antigas do preset de anel salvas em dados.json.
-    // O modelo antigo ficava sem deslocamento lateral; ao trocar de etiqueta
-    // o operador precisava compensar cerca de 20mm manualmente.
+    // Corrige somente a assinatura conhecida do preset legado de anel.
+    // Margens e medidas sao configuraveis pelo operador; comparar qualquer
+    // diferenca com o preset atual apagaria uma calibracao salva no editor.
     result = result.map((t) => {
       if (t.id !== ANEL_PRESET_ID) return t;
       const preset = anelPreset();
-      const outdated =
-        Math.abs(t.widthMm - preset.widthMm) > 0.01 ||
-        Math.abs(t.heightMm - preset.heightMm) > 0.01 ||
-        Math.abs((t.marginLeftMm ?? 0) - (preset.marginLeftMm ?? 0)) > 0.01 ||
-        Math.abs((t.marginTopMm ?? 0) - (preset.marginTopMm ?? 0)) > 0.01 ||
-        Math.abs((t.marginBottomMm ?? 0) - (preset.marginBottomMm ?? 0)) > 0.01 ||
-        t.printRotation !== preset.printRotation;
+      const isLegacyCalibration =
+        Math.abs(t.widthMm - 55) <= 0.01 &&
+        Math.abs(t.heightMm - 10) <= 0.01 &&
+        Math.abs(t.marginLeftMm ?? 0) <= 0.01 &&
+        Math.abs(t.marginTopMm ?? 0) <= 0.01 &&
+        Math.abs(t.marginBottomMm ?? 0) <= 0.01;
 
-      return outdated
+      return isLegacyCalibration
         ? { ...preset, preferredPrinterName: t.preferredPrinterName || preset.preferredPrinterName }
         : t;
     });
