@@ -79,13 +79,15 @@ function resolveTokenFromAuth(data) {
   return data?.accessToken || data?.access_token || data?.token || data?.jwt || "";
 }
 
-async function getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword) {
+async function getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword, forceRefresh = false) {
   const username = configuredUsername || getEnv(empresa, "USERNAME");
   const password = configuredPassword || getEnv(empresa, "PASSWORD");
   const tokenFromEnv = getEnv(empresa, "TOKEN");
   const cacheKey = `${empresa}:${baseUrl}:${username}`;
-  const cachedToken = tokenCache.get(cacheKey);
-  if (cachedToken) return cachedToken;
+  if (!forceRefresh) {
+    const cachedToken = tokenCache.get(cacheKey);
+    if (cachedToken) return cachedToken;
+  }
 
   if (username && password) {
     const response = await fetchWithRetry(`${baseUrl}/auth`, {
@@ -456,13 +458,30 @@ async function buscarProdutosPorTermo(baseUrl, token, termo, limit, debug) {
   return Array.from(itemsById.values()).slice(0, limit);
 }
 
-async function consultarProdutoEmpresa({ codigo, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
+// Se o token cacheado expirou entre uma consulta e outra, todas as etapas dessa
+// mesma busca falham com 401 (a troca Bearer/raw reformata o mesmo token invalido,
+// nao busca um novo). Isso fazia um item dar 401 e o proximo, ja com cache limpo, funcionar.
+// Por isso repetimos a busca inteira uma vez com um token forcadamente renovado.
+async function withFreshTokenRetry(run) {
+  try {
+    return await run(false);
+  } catch (error) {
+    if (error?.status === 401) return await run(true);
+    throw error;
+  }
+}
+
+async function consultarProdutoEmpresa(params) {
+  return withFreshTokenRetry((forceRefresh) => consultarProdutoEmpresaAttempt(params, forceRefresh));
+}
+
+async function consultarProdutoEmpresaAttempt({ codigo, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }, forceRefresh) {
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
   const lojaId = resolveLojaId(empresa, loja);
   const debug = [{ step: "entrada", path: "electron:varejo-facil", message: `empresa=${empresa}; codigo=${codigo}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}` }];
 
-  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
+  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword, forceRefresh);
   const username = configuredUsername || getEnv(empresa, "USERNAME");
   const cacheKey = `${empresa}:${baseUrl}:${username}`;
   debug.push({ step: "auth", path: `${baseUrl}/auth`, found: true, message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}` });
@@ -521,13 +540,17 @@ async function consultarProduto(params) {
   return consultarProdutoEmpresa(params);
 }
 
-async function consultarProdutoPorId({ produtoId, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }) {
+async function consultarProdutoPorId(params) {
+  return withFreshTokenRetry((forceRefresh) => consultarProdutoPorIdAttempt(params, forceRefresh));
+}
+
+async function consultarProdutoPorIdAttempt({ produtoId, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword }, forceRefresh) {
   const empresa = normalizeEmpresa(companyName || empresaInput);
   const baseUrl = resolveBaseUrl(empresa, configuredBaseUrl);
   const lojaId = resolveLojaId(empresa, loja);
   const debug = [{ step: "entrada-id", path: "electron:varejo-facil", message: `empresa=${empresa}; produtoId=${produtoId}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}` }];
 
-  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
+  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword, forceRefresh);
   const username = configuredUsername || getEnv(empresa, "USERNAME");
   const cacheKey = `${empresa}:${baseUrl}:${username}`;
   debug.push({ step: "auth", path: `${baseUrl}/auth`, found: true, message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}` });
@@ -541,7 +564,21 @@ async function consultarProdutoPorId({ produtoId, empresa: empresaInput, company
   };
 }
 
-async function pesquisarProdutosEmpresa({ search, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword, limit = 20 }) {
+async function pesquisarProdutosEmpresa(params) {
+  return withFreshTokenRetry(async (forceRefresh) => {
+    const result = await pesquisarProdutosEmpresaAttempt(params, forceRefresh);
+    // buscarProdutosPorTermo nao lanca em 401 (so pula o item), entao detectamos
+    // aqui para acionar o retry com token renovado, igual aos outros fluxos.
+    if (!forceRefresh && result.items.length === 0 && result.debug.some((d) => d.status === 401)) {
+      const error = new Error("ERP recusou o Authorization. Verifique token, usuario ou senha.");
+      error.status = 401;
+      throw error;
+    }
+    return result;
+  });
+}
+
+async function pesquisarProdutosEmpresaAttempt({ search, empresa: empresaInput, companyName, loja, baseUrl: configuredBaseUrl, token: configuredToken, username: configuredUsername, password: configuredPassword, limit = 20 }, forceRefresh) {
   const termo = sanitizeSearchTerm(search);
   if (!termo) return { items: [], debug: [] };
 
@@ -550,7 +587,7 @@ async function pesquisarProdutosEmpresa({ search, empresa: empresaInput, company
   const lojaId = resolveLojaId(empresa, loja);
   const debug = [{ step: "entrada-search", path: "electron:varejo-facil", message: `empresa=${empresa}; search=${termo}; loja=${Number.isFinite(lojaId) ? lojaId : "nao definida"}; base=${baseUrl}` }];
 
-  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword);
+  const token = await getAccessToken(empresa, baseUrl, configuredToken, configuredUsername, configuredPassword, forceRefresh);
   const username = configuredUsername || getEnv(empresa, "USERNAME");
   const cacheKey = `${empresa}:${baseUrl}:${username}`;
   debug.push({ step: "auth", path: `${baseUrl}/auth`, found: true, message: `token disponivel via ${tokenSourceCache.get(cacheKey) || (username ? "auth" : "env-token")}` });
